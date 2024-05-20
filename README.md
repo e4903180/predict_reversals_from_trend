@@ -1,0 +1,1 @@
+# predict_reversals_from_trend
