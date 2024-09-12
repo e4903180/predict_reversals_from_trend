@@ -2,100 +2,35 @@ import numpy as np
 import pandas as pd
 import torch
 
+class Postprocessor:
+    """
+    A class used to handle the postprocessing of model predictions for trend reversals.
 
-class Postprocesser:
-    def __init__(self):
-        pass
+    Attributes:
+        params (dict): Parameters for controlling the postprocessing behavior.
+    """
     
-    def modify_rows(self, arr):
-        for row in arr:
-            # Find the first index in the row where the change occurs
-            change_index = np.where(np.diff(row) != 0)[0]
-            if change_index.size > 0:
-                first_change_index = change_index[0] + 1
-                # Set all values after the first change to the value at the change index
-                row[first_change_index:] = row[first_change_index]
-        return arr
-
-    def remove_short_sequences(self, arr, x):
+    def __init__(self, params):
         """
-        Remove sequences in the array that are shorter than x, considering both 0 to 1 and 1 to 0 changes.
+        Initializes the Postprocessor with given parameters.
 
-        :param arr: The input array
-        :param x: The minimum sequence length to keep
-        :return: The modified array
+        Args:
+            params (dict): A dictionary of parameters for postprocessing.
         """
-        # Identify the changes in the array
-        change_indices = np.where(np.diff(arr) != 0)[0] + 1
-        # Include the start and end of the array
-        change_indices = np.insert(change_indices, 0, 0)
-        change_indices = np.append(change_indices, len(arr))
-        
-        for i in range(len(change_indices) - 1):
-            # Calculate the length of the sequence
-            seq_length = change_indices[i+1] - change_indices[i]
-            if seq_length < x:
-                # Set the values of short sequences to the value preceding the sequence
-                arr[change_indices[i]:change_indices[i+1]] = arr[change_indices[i] - 1]
-        return arr
+        self.params = params
 
-    # def process_signals(self, y_data, dates, filter):
-    #     binary_data = (y_data > 0.5).to(torch.int32)
-    #     flatten_binary_data = binary_data[:, :, 1].flatten() # 數據經過one-hot encoding，只取第二個值才能還原至原始Trend
-        
-    #     if filter != 'False':
-    #         flatten_binary_data = self.remove_short_sequences(flatten_binary_data, filter)
-        
-    #     signals = np.full(flatten_binary_data.shape, '', dtype=object)
+    def change_values_after_first_reverse_point(self, trend_indices: torch.Tensor):
+        """
+        Modify the values in the trend_indices tensor after the first trend reversal.
 
-    #     for i in range(1, len(flatten_binary_data)):
-    #         # downward to upward
-    #         if flatten_binary_data[i-1] == 1 and flatten_binary_data[i] == 0:
-    #             signals[i] = 'Buy'
-    #         # upward to downward
-    #         elif flatten_binary_data[i-1] == 0 and flatten_binary_data[i] == 1:
-    #             signals[i] = 'Sell'
+        Args:
+            trend_indices (torch.Tensor): Tensor containing trend indices.
 
-    #     non_empty_signals = np.where(signals != '')[0]
-    #     # if non_empty_signals.size > 0:
-    #     #     first_signal_index = non_empty_signals[0]
-    #     #     last_signal_index = non_empty_signals[-1]
-    #     #     signals[first_signal_index] += ' (first)'
-    #     #     signals[last_signal_index] += ' (last)'
-
-    #     flat_dates = dates.flatten()
-    #     return pd.DataFrame({'Date': flat_dates, 'Signal': signals})
-    
-    def process_signals(self, max_indices, dates, filter):
-        # max_indices = self.modify_rows(max_indices)
-        flatten_max_indices = max_indices.flatten()
-        if filter != 'False':
-            flatten_max_indices = self.remove_short_sequences(flatten_max_indices, filter)
-        # signals = np.full(flatten_max_indices.shape, '', dtype=object)
-        signals = np.zeros(flatten_max_indices.shape)
-        for i in range(1, len(flatten_max_indices)):
-            # downward to upward
-            if flatten_max_indices[i-1] == 1 and flatten_max_indices[i] == 0:
-                # signals[i] = 'Buy'
-                signals[i] = 1
-            # upward to downward
-            elif flatten_max_indices[i-1] == 0 and flatten_max_indices[i] == 1:
-                # signals[i] = 'Sell'
-                signals[i] = -1
-
-        # non_empty_signals = np.where(signals != '')[0]
-        # if non_empty_signals.size > 0:
-        #     first_signal_index = non_empty_signals[0]
-        #     last_signal_index = non_empty_signals[-1]
-        #     signals[first_signal_index] += ' (first)'
-        #     signals[last_signal_index] += ' (last)'
-
-        flat_dates = dates.flatten()
-        return pd.DataFrame({'Date': flat_dates, 'Signal': signals})
-    
-    def change_values_after_first_reverse_point(self, max_indices:torch.Tensor):
-        for idx, sub_y in enumerate(max_indices):
-            array = sub_y.numpy()
+        Returns:
+            torch.Tensor: Tensor with values changed after the first reversal point.
+        """
+        for idx, sub_y in enumerate(trend_indices):
+            array = sub_y.detach().numpy()
             transition_found = False
             for i in range(1, len(array)):
                 if not (array[i] == array[i-1]).all():
@@ -103,38 +38,216 @@ class Postprocesser:
                     transition_found = True
                     break
             if not transition_found:
-                array = sub_y.numpy()
+                array = sub_y.detach().numpy()
             
-            max_indices[idx] = torch.tensor(array)
-        return max_indices
-
-    def get_first_trend_reversal_signals(self, max_indices):
+            trend_indices[idx] = torch.tensor(array)
+        return trend_indices
+    
+    def get_first_trend_reversal_and_idx_signals(self, trend_indices):
         """
-        This function calculates the first trend reversal signal for each row of an array.
-        The signal indicates the first change from upward to downward (0 to 1) or
-        downward to upward (1 to 0) within each row.
+        Calculates the first trend reversal signal for each row of an array.
 
-        Parameters:
-        - max_indices (ndarray): A 2D numpy array with trend indices (1 for upward, 0 for downward).
+        Args:
+            trend_indices (ndarray): A 2D numpy array with trend indices (1 for downward, 0 for upward).
 
         Returns:
-        - signals (ndarray): A 1D numpy array containing the first trend reversal signals
-                            for each row: 1 for downward to upward, -1 for upward to downward, 
-                            and 0 if no reversal is found.
+            tuple: A tuple containing:
+                - reverse_signals (ndarray): Array with the first trend reversal signals for each row.
+                - reverse_idx (ndarray): Array with the indices of the first trend reversal for each row.
         """
-        # Initialize an array to store the signals
-        signals = np.zeros(max_indices.shape[0])
+        reverse_signals = np.zeros(trend_indices.shape[0], dtype=int)
+        reverse_idx = np.zeros(trend_indices.shape[0], dtype=int)
 
-        # Iterate over each row to determine the first trend reversal
-        for idx in range(max_indices.shape[0]):
-            for i in range(1, max_indices.shape[1]):
-                # downward to upward
-                if max_indices[idx][i - 1] == 1 and max_indices[idx][i] == 0:
-                    signals[idx] = 1
+        for idx in range(trend_indices.shape[0]):
+            for i in range(1, trend_indices.shape[1]):
+                if trend_indices[idx][i - 1] == 1 and trend_indices[idx][i] == 0:  # Downward to upward
+                    reverse_signals[idx] = -1  # Valley
+                    reverse_idx[idx] = i
                     break
-                # upward to downward
-                elif max_indices[idx][i - 1] == 0 and max_indices[idx][i] == 1:
-                    signals[idx] = -1
+                elif trend_indices[idx][i - 1] == 0 and trend_indices[idx][i] == 1:  # Upward to downward
+                    reverse_signals[idx] = 1  # Peak
+                    reverse_idx[idx] = i
                     break
+        return reverse_signals, reverse_idx
+    
+    def get_trade_signals(self, reverse_signals, reverse_idx, test_dates, target_dataset):
+        """
+        Generates trade signals based on the reversal signals.
 
-        return signals
+        Args:
+            reverse_signals (ndarray): Array of reversal signals.
+            reverse_idx (ndarray): Array of indices where reversals occur.
+            test_dates (ndarray): Array of test dates.
+            target_dataset (pd.DataFrame): The target dataset.
+
+        Returns:
+            pd.DataFrame: DataFrame with generated trade signals.
+        """
+        trade_signals = pd.DataFrame(index=target_dataset.loc[test_dates[0][0]:test_dates[-1][-1]].index, columns=['Order'])
+        for idx in range(0, reverse_idx.shape[0]):
+            if reverse_signals[idx] == 1:  # Peak
+                trade_signals.loc[test_dates[idx][reverse_idx[idx]], 'Order'] = 'Sell'
+            elif reverse_signals[idx] == -1:  # Valley
+                trade_signals.loc[test_dates[idx][reverse_idx[idx]], 'Order'] = 'Buy'
+        return trade_signals
+    
+    def compare_reverse_predictions(self, y_preds_reverse_idx, y_preds_reverse_signals, y_test_reverse_idx, y_test_reverse_signals):
+        """
+        Compares predicted reversal indices and signals with actual values.
+
+        Args:
+            y_preds_reverse_idx (ndarray): Predicted reversal indices.
+            y_preds_reverse_signals (ndarray): Predicted reversal signals.
+            y_test_reverse_idx (ndarray): Actual reversal indices.
+            y_test_reverse_signals (ndarray): Actual reversal signals.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the comparison results.
+        """
+        reverse_info = {
+            'predicted_reverse_idx': y_preds_reverse_idx,
+            'predicted_reverse_signals': y_preds_reverse_signals,
+            'predicted_reverse_label': None,
+            'actual_reverse_idx': y_test_reverse_idx,
+            'actual_reverse_signals': y_test_reverse_signals,
+            'actual_reverse_label': None
+        }
+        
+        reverse_difference = pd.DataFrame(reverse_info)
+        
+        reverse_difference['reverse_signal_correct'] = \
+            reverse_difference['predicted_reverse_signals'] == reverse_difference['actual_reverse_signals']
+        reverse_difference['reverse_idx_difference'] = reverse_difference.apply(
+            lambda row: (row['predicted_reverse_idx'] - row['actual_reverse_idx']) if row['reverse_signal_correct'] else None, 
+            axis=1
+        )
+        
+        reverse_idx_difference_max = self.params.get('reverse_idx_difference_max', 5)
+        reverse_idx_difference_min = self.params.get('reverse_idx_difference_min', -2)
+        reverse_difference['predict_in_range'] = \
+            (reverse_difference['reverse_idx_difference'] <= reverse_idx_difference_max) & \
+                (reverse_difference['reverse_idx_difference'] >= reverse_idx_difference_min)
+        
+        label_map = {-1: 'Valley', 0: 'No reversal', 1: 'Peak'}
+        reverse_difference['actual_reverse_label'] = reverse_difference['actual_reverse_signals'].map(label_map)
+        reverse_difference['predicted_reverse_label'] = reverse_difference['predicted_reverse_signals'].map(label_map)
+        
+        return reverse_difference
+
+    def calculate_reversal_dates(self, reverse_signals, reverse_idx, test_dates, target_dataset):
+        """
+        Determines where reversals occur within the given data.
+
+        Args:
+            reverse_signals (ndarray): Array of reversal signals.
+            reverse_idx (ndarray): Array of indices where reversals occur.
+            test_dates (ndarray): Array of test dates.
+            target_dataset (pd.DataFrame): The target dataset.
+
+        Returns:
+            ndarray: Array indicating the dates where reversals occur.
+        """
+        reversal_dates = pd.DataFrame(index=target_dataset.loc[test_dates[0][0]:test_dates[-1][-1]].index, columns=['Reversals'])
+        for idx in range(0, reverse_idx.shape[0]):
+            if reverse_signals[idx] == 1:  # Peak
+                reversal_dates.loc[test_dates[idx][reverse_idx[idx]], 'Reversals'] = 1
+            elif reverse_signals[idx] == -1:  # Valley
+                reversal_dates.loc[test_dates[idx][reverse_idx[idx]], 'Reversals'] = -1
+        reversal_dates.replace(np.nan, 0, inplace=True)
+        return reversal_dates['Reversals'].values
+    
+    def calculate_reversal_dates_with_signals(self, reverse_signals, reverse_idx, test_dates, target_dataset):
+        """
+        Determines where reversals occur, skipping non-reversal dates.
+
+        Args:
+            reverse_signals (ndarray): Array of reversal signals.
+            reverse_idx (ndarray): Array of indices where reversals occur.
+            test_dates (ndarray): Array of test dates.
+            target_dataset (pd.DataFrame): The target dataset.
+
+        Returns:
+            tuple: A tuple containing:
+                - ndarray: Array indicating the overlap of reversals with passing signals.
+                - list: List of reversal signal indices.
+                - list: List of reversal indices.
+        """
+        reversal_dates = pd.DataFrame(index=target_dataset.loc[test_dates[0][0]:test_dates[-1][-1]].index, columns=['Reversals'])
+        counter = 0
+        valid_reverse_signals = []
+        valid_reverse_indices = []
+
+        while counter < reverse_idx.shape[0]:
+            if reverse_signals[counter] == 1:  # Peak
+                reversal_dates.loc[test_dates[counter][reverse_idx[counter]], 'Reversals'] = 1
+                valid_reverse_signals.append(counter)
+                valid_reverse_indices.append(reverse_idx[counter])
+                counter += reverse_idx[counter]
+            elif reverse_signals[counter] == -1:  # Valley
+                reversal_dates.loc[test_dates[counter][reverse_idx[counter]], 'Reversals'] = -1
+                valid_reverse_signals.append(counter)
+                valid_reverse_indices.append(reverse_idx[counter])
+                counter += reverse_idx[counter]
+            else:
+                counter += 1
+        reversal_dates.replace(np.nan, 0, inplace=True)
+        return reversal_dates['Reversals'].values, valid_reverse_signals, valid_reverse_indices
+    
+    def postprocess_predictions(self, y_preds, y_test, test_dates, target_dataset):
+        """
+        Post-processes the model predictions to generate trade signals and other metrics.
+
+        Args:
+            y_preds (torch.Tensor): Predicted values from the model.
+            y_test (torch.Tensor): Ground truth values.
+            test_dates (ndarray): Array of test dates.
+            target_dataset (pd.DataFrame): The target dataset.
+
+        Returns:
+            dict: Dictionary with postprocessed results including:
+                - 'y_preds_indices': Processed predicted indices.
+                - 'y_test_indices': Processed ground truth indices.
+                - 'test_trade_signals': DataFrame with test trade signals.
+                - 'predicted_trade_signals': DataFrame with predicted trade signals.
+                - 'passing_trade_signals': DataFrame with passing trade signals.
+                - 'comparison_summary': DataFrame with comparison results.
+                - 'filtered_reversal_dates': Array with filtered reversal dates.
+                - 'reversal_dates_test': Array with reversal dates for the test set.
+                - 'valid_signals': List of valid signals.
+                - 'valid_indices': List of valid indices.
+        """
+        y_preds_indices = self.change_values_after_first_reverse_point(y_preds)
+        y_test_indices = self.change_values_after_first_reverse_point(y_test)
+        
+        y_preds_reverse_signals, y_preds_reverse_idx = \
+            self.get_first_trend_reversal_and_idx_signals(y_preds_indices)
+        y_test_reverse_signals, y_test_reverse_idx = \
+            self.get_first_trend_reversal_and_idx_signals(y_test_indices)
+        
+        test_trade_signals = \
+            self.get_trade_signals(y_test_reverse_signals, y_test_reverse_idx, test_dates, target_dataset)
+        predicted_trade_signals = \
+            self.get_trade_signals(y_preds_reverse_signals, y_preds_reverse_idx, test_dates, target_dataset)
+        
+        passing_trade_signals = \
+            self.get_trade_signals(y_test_reverse_signals, y_test_reverse_idx, test_dates, target_dataset)
+        
+        comparison_summary = \
+            self.compare_reverse_predictions(y_preds_reverse_idx, y_preds_reverse_signals, y_test_reverse_idx, y_test_reverse_signals)
+        
+        filtered_reversal_dates, valid_signals, valid_indices = \
+            self.calculate_reversal_dates_with_signals(y_test_reverse_signals, y_test_reverse_idx, test_dates, target_dataset)
+        reversal_dates_test = self.calculate_reversal_dates(y_test_reverse_signals, y_test_reverse_idx, test_dates, target_dataset)
+        
+        return {
+            'y_preds_indices': y_preds_indices,
+            'y_test_indices': y_test_indices,
+            'test_trade_signals': test_trade_signals,
+            'predicted_trade_signals': predicted_trade_signals,
+            'passing_trade_signals': passing_trade_signals,
+            'comparison_summary': comparison_summary,
+            'filtered_reversal_dates': filtered_reversal_dates,
+            'reversal_dates_test': reversal_dates_test,
+            'valid_signals': valid_signals,
+            'valid_indices': valid_indices
+        }
