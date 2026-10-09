@@ -105,12 +105,33 @@ def tabular(items):
 
 
 # ------------------------------------------------------------------ neural nets
+def parse_spec(spec):
+    """'GRU-hazard-h32-lr3e-4-do0.3-wd1e-3' -> ('GRU', 'hazard', {'hidden': 32}, lr, weight decay)."""
+    parts = spec.split('-')
+    encoder, head, enc_kw, lr, wd = parts[0], parts[1], {}, 1e-3, 1e-4
+    i = 2
+    while i < len(parts):
+        tok = parts[i]
+        if tok[-1] == 'e' and i + 1 < len(parts):  # re-join scientific notation split by '-'
+            tok, i = tok + '-' + parts[i + 1], i + 1
+        if tok.startswith('lr'):
+            lr = float(tok[2:])
+        elif tok.startswith('wd'):
+            wd = float(tok[2:])
+        elif tok.startswith('do'):
+            enc_kw['dropout'] = float(tok[2:])
+        elif tok.startswith('h'):
+            enc_kw['hidden'] = int(tok[1:])
+        i += 1
+    return encoder, head, enc_kw, lr, wd
+
+
 def train_nn(spec, seed, train_items, val_items, n_features, max_epochs=40, patience=5, batch=256):
-    encoder, head = spec.split('-')
+    encoder, head, enc_kw, lr, wd = parse_spec(spec)
     torch.manual_seed(seed)
     np.random.seed(seed)
-    model = ReversalNet(encoder, n_features, HORIZON, head)
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    model = ReversalNet(encoder, n_features, HORIZON, head, **enc_kw)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
     # flatten (item, row) pairs for shuffling
     index = np.concatenate([np.stack([np.full(len(it['pos']), i), np.arange(len(it['pos']))], 1)
                             for i, it in enumerate(train_items)])

@@ -105,10 +105,28 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('run_dir')
     ap.add_argument('--out', default=None)
+    ap.add_argument('--ensemble', action='append', default=[],
+                    help='name=modelA+modelB+... : average the (seed-averaged) probabilities of several models')
+    ap.add_argument('--extra-run', action='append', default=[],
+                    help='prefix=path : also load the models of another run directory, named prefix/<model>')
     args = ap.parse_args()
     out_dir = args.out or os.path.join(args.run_dir, 'summary')
     os.makedirs(out_dir, exist_ok=True)
     folds = load_run(args.run_dir)
+    for extra in args.extra_run:
+        prefix, path = extra.split('=', 1)
+        other = {f['k']: f for f in load_run(path)}
+        for f in folds:
+            for m, p in other.get(f['k'], {'preds': {}})['preds'].items():
+                f['preds'][f'{prefix}/{m}'] = p
+                f['n_seeds'][f'{prefix}/{m}'] = other[f['k']]['n_seeds'][m]
+    for spec in args.ensemble:
+        name, members = spec.split('=', 1)
+        members = members.split('+')
+        for f in folds:
+            if all(m in f['preds'] for m in members):
+                f['preds'][name] = {key: np.mean([f['preds'][m][key] for m in members], 0) for key in f['preds'][members[0]]}
+                f['n_seeds'][name] = sum(f['n_seeds'][m] for m in members)
     models = sorted(set.intersection(*[set(f['preds']) for f in folds]))
     rows, pooled = [], defaultdict(list)
     bt = defaultdict(list)
