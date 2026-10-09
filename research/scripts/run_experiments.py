@@ -29,8 +29,8 @@ from preprocessor.preprocessor import Preprocessor  # noqa: E402
 OUT_DIR = sys.argv[1]
 QUICK = '--quick' in sys.argv
 
-MODELS = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--models=')),
-              ['GRU', 'LSTM', 'TransformerModel', 'TransformerEncoderPE'])
+MODELS = [m for m in next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--models=')),
+                          ['GRU', 'LSTM', 'TransformerModel', 'TransformerEncoderPE']) if m]
 SEEDS = [42] if QUICK else [42, 1, 2]
 DROPOUT = float(next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--dropout=')), 0))
 COMMON = {'learning_rate': 1e-4, 'training_epoch_num': 50, 'patience': 10, 'batch_size': 32,
