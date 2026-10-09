@@ -143,3 +143,12 @@
 - **加強預測，有效的**：hazard 頭、多指數訓練、已確認趨勢特徵、模型集成。**無效的**：更新的架構、加強正則化、總經特徵、國際資料、LightGBM。
 - 最穩定的發現：hazard 頭的反轉預測在 8/8 個時段勝過基準。最有應用潛力的是 `peak_exit` 策略，但檢定力不足。
 - README 的執行摘要已更新。
+
+## 2026-10-09（續）
+
+### 18:55　提高檢定力：在多個指數上測試
+- 問題：^GSPC 在 2008–2023 只有約 89 次反轉，`peak_exit` 等結果因此達不到顯著。
+- 做法：同一批模型（訓練方式不變），在每個時段同時預測 ^IXIC、^DJI、^RUT 的測試期。這段期間不在訓練資料中，反轉樣本約為 4 倍。閾值與校準仍只用 ^GSPC 的驗證集決定。
+  - `walkforward.py --eval-indices`
+  - `pooled.py`：32 格（指數 × 時段）的勝率與 sign test、跨指數的分層 block bootstrap、isotonic 校準、警報持續天數、各指數的 `peak_exit` 與隨機出場比較。
+- 啟動：logreg、GRU-hazard、GRU-bce16、MLP-hazard、TCN-hazard × 8 個時段 × 3 seeds。
