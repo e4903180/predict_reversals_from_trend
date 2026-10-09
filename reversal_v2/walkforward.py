@@ -218,6 +218,7 @@ def main():
     ap.add_argument('--threads', type=int, default=0)
     ap.add_argument('--train-indices', default=','.join(D.INDICES), help='indices used for training (GSPC always used for val/test)')
     ap.add_argument('--drop-features', default='', help='comma-separated groups from FEATURE_GROUPS to leave out')
+    ap.add_argument('--eval-indices', default='', help='extra indices to predict on the test block; saved under <out>/<SYM>/')
     args = ap.parse_args()
     if args.threads:
         torch.set_num_threads(args.threads)
@@ -237,39 +238,51 @@ def main():
         items = {name: gather(all_data, Xs, part) for name, part in sets.items()}
         fold_dir = os.path.join(args.out, f'fold{k}')
         os.makedirs(fold_dir, exist_ok=True)
-        meta = {split: dict(dates=np.concatenate([it['dates'] for it in items[split]]).astype('datetime64[D]').astype(str),
-                            Y=tabular(items[split])[1], first=tabular(items[split])[2], rev=tabular(items[split])[3],
-                            close=all_data['GSPC']['close'][items[split][0]['pos']],
-                            open=all_data['GSPC']['open'][items[split][0]['pos']],
-                            ma20=all_data['GSPC']['ma20'][items[split][0]['pos']],
-                            conf_age=all_data['GSPC']['conf_age'][items[split][0]['pos']],
-                            conf_type=all_data['GSPC']['conf_type'][items[split][0]['pos']])
-                for split in ('val', 'test')}
+        def split_meta(sym, its):
+            pos = its[0]['pos']
+            return dict(dates=np.concatenate([it['dates'] for it in its]).astype('datetime64[D]').astype(str),
+                        Y=tabular(its)[1], first=tabular(its)[2], rev=tabular(its)[3],
+                        **{c: all_data[sym][c][pos] for c in ('close', 'open', 'ma20', 'conf_age', 'conf_type')})
+
+        meta = {split: split_meta('GSPC', items[split]) for split in ('val', 'test')}
         np.savez_compressed(os.path.join(fold_dir, 'labels.npz'), **{f'{s}_{k2}': v for s, d in meta.items() for k2, v in d.items()})
+        extra = {}
+        for sym in [x for x in args.eval_indices.split(',') if x and x != 'GSPC']:
+            its = gather(all_data, Xs, {sym: fold_positions(all_data[sym], test_start, test_end)})
+            d = os.path.join(args.out, sym, f'fold{k}')
+            os.makedirs(d, exist_ok=True)
+            m = {'val': meta['val'], 'test': split_meta(sym, its)}
+            np.savez_compressed(os.path.join(d, 'labels.npz'), **{f'{s}_{k2}': v for s, dd in m.items() for k2, v in dd.items()})
+            extra[sym] = (d, its)
         n_train = sum(len(it['pos']) for it in items['train'])
         print(f'fold {k} test {test_start.date()}..{test_end.date()} train={n_train} val={len(meta["val"]["first"])} test={len(meta["test"]["first"])}', flush=True)
         for spec in args.models.split(','):
             for seed in (seeds if spec not in ('logreg', 'lgbm') else seeds[:1]):
                 path = os.path.join(fold_dir, f'{spec}_s{seed}.npz')
-                if os.path.exists(path):
+                extra_paths = {sym: os.path.join(d, f'{spec}_s{seed}.npz') for sym, (d, _) in extra.items()}
+                if os.path.exists(path) and all(os.path.exists(p) for p in extra_paths.values()):
                     continue
                 t0 = time.time()
                 preds, info = {}, {}
                 if spec in ('logreg', 'lgbm'):
                     Xtr, Ytr, Ftr, Rtr = tabular(items['train'])
                     models = fit_tabular(spec, seed, Xtr, Ytr, Ftr, Rtr)
-                    for split in ('val', 'test'):
-                        trend, ev = tabular_predict(models, tabular(items[split])[0])
-                        preds[f'{split}_trend'] = trend
-                        preds.update({f'{split}_event{m}': v for m, v in ev.items()})
+                    predict = lambda its: tabular_predict(models, tabular(its)[0])
                 else:
                     model, history = train_nn(spec, seed, items['train'], items['val'], len(cols))
                     info['history'] = history
-                    for split in ('val', 'test'):
-                        trend, ev = nn_predict(model, items[split])
-                        preds[f'{split}_trend'] = trend
-                        preds.update({f'{split}_event{m}': v for m, v in ev.items()})
+                    predict = lambda its: nn_predict(model, its)
+                for split in ('val', 'test'):
+                    trend, ev = predict(items[split])
+                    preds[f'{split}_trend'] = trend
+                    preds.update({f'{split}_event{m}': v for m, v in ev.items()})
                 np.savez_compressed(path, **preds, info=json.dumps(info))
+                for sym, (d, its) in extra.items():
+                    trend, ev = predict(its)
+                    xp = {k2: v for k2, v in preds.items() if k2.startswith('val_')}
+                    xp['test_trend'] = trend
+                    xp.update({f'test_event{m}': v for m, v in ev.items()})
+                    np.savez_compressed(extra_paths[sym], **xp, info=json.dumps(info))
                 print(f'  {spec} seed {seed}: {time.time() - t0:.0f}s'
                       + (f" epochs={len(info['history'])} best_val={min(h[2] for h in info['history']):.4f}" if 'history' in info else ''),
                       flush=True)

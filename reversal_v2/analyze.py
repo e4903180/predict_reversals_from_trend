@@ -42,11 +42,11 @@ def load_run(run_dir):
     return folds
 
 
-def age_hazard_baseline(fold_k, split_labels):
+def age_hazard_baseline(fold_k, split_labels, symbol='GSPC'):
     """P(reversal within m | confirmed-trend type and age bin), fitted on ^GSPC history before validation."""
     test_start = FOLDS[fold_k][0]
     fit_end = test_start - pd.DateOffset(years=2) - PURGE
-    f = D.build_index_frame('GSPC')
+    f = _frame(symbol)
     f = f.loc[(f.index >= FIRST_DATE) & (f.index <= fit_end)]
     Y, first, rev, valid = D.make_targets(f['trend'], HORIZON)
     bins = np.array([0, 1, 2, 2.5, 3, 3.25, 3.5, 3.75, 4, 4.5, 10])
@@ -59,6 +59,15 @@ def age_hazard_baseline(fold_k, split_labels):
         k_eval = key(split_labels['conf_type'], np.nan_to_num(split_labels['conf_age']))
         out[m] = pd.Series(k_eval).map(table).fillna(ev.mean()).values
     return out
+
+
+_FRAMES = {}
+
+
+def _frame(symbol):
+    if symbol not in _FRAMES:
+        _FRAMES[symbol] = D.build_index_frame(symbol)
+    return _FRAMES[symbol]
 
 
 def block_bootstrap_auc_diff(y, s_model, s_base, block=20, n=1000):
@@ -129,6 +138,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('run_dir')
     ap.add_argument('--out', default=None)
+    ap.add_argument('--symbol', default='GSPC', help='index the run directory was tested on (for the age baseline)')
     ap.add_argument('--ensemble', action='append', default=[],
                     help='name=modelA+modelB+... : average the (seed-averaged) probabilities of several models')
     ap.add_argument('--extra-run', action='append', default=[],
@@ -158,7 +168,7 @@ def main():
         lab = {k.split('_', 1)[1]: v for k, v in f['labels'].items() if k.startswith('test_')}
         val = {k.split('_', 1)[1]: v for k, v in f['labels'].items() if k.startswith('val_')}
         Y, rev = lab['Y'], lab['rev']
-        base = age_hazard_baseline(f['k'], lab)
+        base = age_hazard_baseline(f['k'], lab, args.symbol)
         scores = {'rule': {'trend': np.repeat(-lab['ma20'][:, None], HORIZON, 1), **{f'event{m}': base[m] for m in EVENT_M}}}
         for m in models:
             p = f['preds'][m]
