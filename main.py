@@ -44,6 +44,21 @@ class ReversePrediction():
         with torch.no_grad():
             return torch.sigmoid(model(X))
 
+    def tune_threshold(self, y_probs, y_true):
+        """Picks the probability threshold that maximises Youden's J (TPR - FPR) on the given set.
+
+        Args:
+            y_probs (torch.Tensor): Predicted downtrend probabilities.
+            y_true (torch.Tensor): True labels (1 = downtrend).
+
+        Returns:
+            float: The selected threshold.
+        """
+        from sklearn.metrics import roc_curve
+        fpr, tpr, thresholds = roc_curve(y_true.reshape(-1).numpy(), y_probs.reshape(-1).numpy())
+        best = np.argmax(tpr - fpr)
+        return float(min(thresholds[best], 1.0))
+
     def run(self, params):
         """Executes the trend reversal prediction workflow, including preprocessing, model training, and evaluation.
 
@@ -53,7 +68,7 @@ class ReversePrediction():
         Returns:
             tuple: A tuple containing validation results and test results.
         """
-        self.set_seed(42)
+        self.set_seed(params.get('seed', 42))
         
         # Preprocess data
         preprocessor = Preprocessor(params)
@@ -81,8 +96,11 @@ class ReversePrediction():
         torch.save(model, params['save_path']['trained_model_path'])
         
         # Post-process and evaluate on validation data
-        threshold = params.get('threshold', 0.5)
         y_preds_val = self.predict_proba(model, X_val)
+        threshold = params.get('threshold', 0.5)
+        if threshold == 'auto':
+            threshold = self.tune_threshold(y_preds_val, y_val)
+        params['threshold_used'] = float(threshold)
         postprocessor = Postprocessor(params)
 
         # Call the postprocess_signals method on binarized predictions (copies, so y_preds_val/y_val stay intact)

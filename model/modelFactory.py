@@ -316,6 +316,56 @@ class TransformerModel(NeuralNetworkModelBase):
         return x
 
 
+class TransformerEncoderPE(NeuralNetworkModelBase):
+    """Encoder-only Transformer with learned input projection and sinusoidal positional encoding.
+
+    Unlike `TransformerModel`, the attention layers can tell the time steps apart, and the
+    hidden size is not tied to the number of input features.
+
+    Args:
+        params (dict): Dictionary of model parameters including the number of features,
+            look-back period, prediction steps, and Transformer-specific settings
+            (`d_model`, `num_layers`, `num_heads`).
+    """
+
+    def __init__(self, params):
+        """Initializes the TransformerEncoderPE with the provided parameters."""
+        super(TransformerEncoderPE, self).__init__()
+        self.features_num = len(params['feature_cols'])
+        self.look_back = params['look_back']
+        self.predict_steps = params['predict_steps']
+        transformer_params = params['model_params'].get('TransformerEncoderPE', {})
+        d_model = transformer_params.get('d_model', 64)
+        num_layers = transformer_params.get('num_layers', 2)
+        num_heads = transformer_params.get('num_heads', 4)
+        dropout = params['dropout']
+
+        self.input_proj = nn.Linear(self.features_num, d_model)
+        position = torch.arange(self.look_back).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe = torch.zeros(self.look_back, d_model)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0))
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=num_heads, dim_feedforward=d_model * 2,
+                                                   dropout=dropout, batch_first=True)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc_out = nn.Linear(d_model, self.predict_steps)
+
+    def forward(self, x):
+        """Defines the forward pass of the model.
+
+        Args:
+            x (torch.Tensor): Input tensor with shape (batch_size, sequence_length, features_num).
+
+        Returns:
+            torch.Tensor: Output tensor with shape (batch_size, predict_steps).
+        """
+        x = self.input_proj(x) + self.pe
+        x = self.encoder(x)
+        return self.fc_out(x[:, -1, :])
+
+
 class BiLSTM(NeuralNetworkModelBase):
     """Bidirectional LSTM model for sequence prediction.
 
@@ -1125,6 +1175,7 @@ class ModelFactory:
             'CNN_many_to_many': CNN_many_to_many,
             'TransformerModel': TransformerModel,
             'TransformerModel_many_to_many': TransformerModel_many_to_many,
+            'TransformerEncoderPE': TransformerEncoderPE,
             'BiLSTM': BiLSTM,
             'BiLSTM_many_to_many': BiLSTM_many_to_many,
             'AttentionBiLSTM': AttentionBiLSTM,

@@ -543,7 +543,7 @@ class Evaluator:
             Returns:
                 float: Calculated fee.
             """
-            fee = max(shares * per_share_fee * price, min_fee)
+            fee = max(shares * per_share_fee * price, min_fee) if shares else 0
             return fee
 
         def execute_trade(trade_details, idx, per_share_fee, min_fee):
@@ -564,10 +564,8 @@ class Evaluator:
             close_price = trade_details['Close price'].iloc[idx]
 
             if order == 'Sell':
-                if position_before <= 0:
-                    shares_sold = 1
-                else:
-                    shares_sold = position_before + 1
+                # Fixed position: a Sell always leaves the account short exactly 1 share
+                shares_sold = position_before + 1
 
                 sell_fee = calculate_fee(
                     shares_sold, close_price, per_share_fee, min_fee)
@@ -577,13 +575,10 @@ class Evaluator:
                 trade_details['Commission Fee'].iloc[idx] = sell_fee
 
             elif order == 'Buy':
-                if position_before >= 0:
-                    trade_details['Position after trading'].iloc[idx] = position_before + 1
-                    trade_details['Cash after trading'].iloc[idx] = cash_before - close_price
-                else:
-                    trade_details['Position after trading'].iloc[idx] = 1
-                    trade_details['Cash after trading'].iloc[idx] = cash_before - \
-                        close_price * (position_before * -1 + 1)
+                # Fixed position: a Buy always leaves the account long exactly 1 share
+                shares_bought = 1 - position_before
+                trade_details['Position after trading'].iloc[idx] = position_before + shares_bought
+                trade_details['Cash after trading'].iloc[idx] = cash_before - close_price * shares_bought
 
             return trade_details
 
@@ -629,7 +624,7 @@ class Evaluator:
 
     def execute_trades_with_stop_loss(self, trade_signals, target_dataset, initial_cash=10000, per_share_fee=0.000008, min_fee=0.01):
         def calculate_fee(shares, price, per_share_fee, min_fee):
-            fee = max(shares * per_share_fee * price, min_fee)
+            fee = max(shares * per_share_fee * price, min_fee) if shares else 0
             return fee
 
         def execute_trade(trade_details, idx, per_share_fee, min_fee, initial_cash):
@@ -639,10 +634,8 @@ class Evaluator:
             close_price = trade_details['Close price'].iloc[idx]
 
             if order == 'Sell':
-                if position_before <= 0:
-                    shares_sold = 1
-                else:
-                    shares_sold = position_before + 1
+                # Fixed position: a Sell always leaves the account short exactly 1 share
+                shares_sold = position_before + 1
 
                 sell_fee = calculate_fee(
                     shares_sold, close_price, per_share_fee, min_fee)
@@ -656,10 +649,8 @@ class Evaluator:
                 trade_details['Stop sell'].iloc[idx] = trade_details['Close price'].iloc[idx]*1.1
                 trade_details['Stop buy'].iloc[idx] = np.nan
             elif order == 'Buy':
-                if position_before >= 0:
-                    shares_Buy = 1
-                else:
-                    shares_Buy = position_before * -1 + 1
+                # Fixed position: a Buy always leaves the account long exactly 1 share
+                shares_Buy = 1 - position_before
                 trade_details['Position after trading'].iloc[idx] = position_before + shares_Buy
                 trade_details['Cash after trading'].iloc[idx] = cash_before - \
                     close_price * shares_Buy
@@ -732,7 +723,7 @@ class Evaluator:
 
     def execute_trades_with_stop_loss_stop_win(self, trade_signals, target_dataset, initial_cash=10000, per_share_fee=0.000008, min_fee=0.01):
         def calculate_fee(shares, price, per_share_fee, min_fee):
-            fee = max(shares * per_share_fee * price, min_fee)
+            fee = max(shares * per_share_fee * price, min_fee) if shares else 0
             return fee
 
         def execute_trade(trade_details, idx, per_share_fee, min_fee, initial_cash):
@@ -742,10 +733,8 @@ class Evaluator:
             close_price = trade_details['Close price'].iloc[idx]
 
             if order == 'Sell':
-                if position_before <= 0:
-                    shares_sold = 1
-                else:
-                    shares_sold = position_before + 1
+                # Fixed position: a Sell always leaves the account short exactly 1 share
+                shares_sold = position_before + 1
 
                 sell_fee = calculate_fee(
                     shares_sold, close_price, per_share_fee, min_fee)
@@ -761,10 +750,8 @@ class Evaluator:
                 trade_details['Stop buy loss'].iloc[idx] = np.nan
                 trade_details['Stop buy win'].iloc[idx] = np.nan
             elif order == 'Buy':
-                if position_before >= 0:
-                    shares_Buy = 1
-                else:
-                    shares_Buy = position_before * -1 + 1
+                # Fixed position: a Buy always leaves the account long exactly 1 share
+                shares_Buy = 1 - position_before
                 trade_details['Position after trading'].iloc[idx] = position_before + shares_Buy
                 trade_details['Cash after trading'].iloc[idx] = cash_before - \
                     close_price * shares_Buy
@@ -909,7 +896,7 @@ class Evaluator:
 
     def execute_trades_long_only(self, trade_signals, target_dataset, initial_cash=100000, per_share_fee=0.000008, min_fee=0.01):
         def calculate_fee(shares, price, per_share_fee, min_fee):
-            fee = max(shares * per_share_fee * price, min_fee)
+            fee = max(shares * per_share_fee * price, min_fee) if shares else 0
             return fee
 
         def execute_trade(trade_details, idx, per_share_fee, min_fee, initial_cash):
