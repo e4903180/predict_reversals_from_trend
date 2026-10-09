@@ -1,0 +1,40 @@
+# 研究文件：predict_reversals_from_trend 專案分析
+
+> 分析日期：2026-10-09
+> 分析對象：`main` 分支最新 commit `0ee6949`（2025-05-27），以及 git 歷史中的舊版實驗 `dd800b2`（2024-05-20）、`f8c6135`（2024-09-13）
+
+本資料夾是對「以深度學習預測股價趨勢反轉點——以 S&P 500 為例」（成功大學碩士研究，林承平，指導教授：吳謂勝）這個專案的完整回顧。目的是讓多年後重新接手的人能快速理解：**它在做什麼、程式怎麼運作、目前結果能不能信、下一步該做什麼**。
+
+## 文件索引
+
+| 檔案 | 內容 |
+|---|---|
+| [01_project_overview.md](01_project_overview.md) | 研究動機、問題定義、整體流程、資料與參數 |
+| [02_code_walkthrough.md](02_code_walkthrough.md) | 逐模組程式碼解析（preprocessor / model / postprocessor / evaluator） |
+| [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
+| [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
+| [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
+| [data/legacy_experiments_2024-05.csv](data/legacy_experiments_2024-05.csv) | 從 git 歷史抽出的 108 組舊實驗指標 |
+| [data/extract_legacy_experiments.py](data/extract_legacy_experiments.py) | 產生上述 CSV 的腳本（在 repo 根目錄執行 `python3 research/data/extract_legacy_experiments.py > out.csv`） |
+
+## 執行摘要（TL;DR）
+
+**研究構想是合理且有價值的**：反轉點是極稀有事件（嚴重類別不平衡），改為預測「未來 16 天每天的趨勢（漲/跌）」，再從趨勢序列的變化推出反轉點，是個聰明的問題轉換。程式架構（Factory 模式、可插拔的特徵/模型、參數全部放在 JSON）也相當乾淨。
+
+**但目前 repo 裡的結果不能直接採信**，因為有幾個關鍵錯誤：
+
+1. 🔴 **回測使用真實標籤而非模型預測**：`postprocessor.py:232` 的 `passing_trade_signals` 是由 `y_test`（未來真實的趨勢）產生，而 `evaluator` 所有回測都用它。因此 `outputs/` 的交易結果（26 筆交易 25 筆獲利）其實是「完美預知未來」的上限，不是模型表現。
+2. 🔴 **反轉三分類矩陣是「真實 vs 真實」**：`reversal_confusion_three_type_matrix` / `pass_reversal_confusion_matrix` 兩邊傳入的都是由 `y_test` 產生的資料，所以 Accuracy/F1 全為 1.0。
+3. 🔴 **模型輸出的 logits 從未轉成 0/1**：模型輸出 logits（使用 `BCEWithLogitsLoss`），後處理卻直接拿 logits 判斷 `== 0` / `== 1`，導致「預測的反轉」永遠為 0、趨勢混淆矩陣把所有預測都當成 downtrend（Accuracy 0.29 = 測試期 downtrend 比例）。
+4. 🟠 **舊版實驗（2024-05 的 108 組）把目標欄位 `Trend` 放進輸入特徵**，而 `Trend` 是用未來 20 天價格決定的局部極值計算的 → 資料洩漏；且舊版 `X_test` 包含了驗證集。
+5. 🟠 Early stopping 存的是 `state_dict()` 的參考而非複本，rollback 無效；`batch_size` 參數被寫死的 32 覆蓋；Transformer 沒有位置編碼。
+6. 🟡 README 寫資料期間 2001–2023，但 `^VIX3M` 歷史較短，`auto` 清洗會把開頭有 NaN 的列全部刪掉，實際有效起點約在 2006 年中（由輸出日期反推，詳見 03）。
+
+**實際可參考的模型能力指標**只有 ROC-AUC（測試集 0.658、驗證集 0.550，TransformerModel、10 epochs、lr=1e-5，而且被第 3 點的錯誤部分污染）。舊版 DNN 實驗的趨勢準確率中位數約 0.60，但受第 4 點洩漏影響，同樣需要重跑才能確認。
+
+**建議下一步**（詳見 05）：先修正上述 1–3 點並補上 sigmoid + 閾值、用「預測訊號」重做回測、加入 Buy&Hold 與簡單規則（如 MA 交叉）作為基準，再談模型比較。
+
+## 注意事項
+
+- 本次分析**沒有重跑訓練**：雲端環境無法連線 Yahoo Finance（403），且未安裝 torch / TA-Lib；結論來自靜態程式閱讀 + 已存在的 `outputs/reports/*.json` + git 歷史中的實驗結果。
+- 程式依賴 2024 年的套件版本（pandas 2.x 時代的 `fillna(method=...)`、鏈式賦值、`Series[int]` 位置索引），在 pandas 3.x 會出錯，重跑前需鎖定版本或修改（見 05）。
