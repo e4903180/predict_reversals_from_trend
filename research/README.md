@@ -18,7 +18,8 @@
 | [LOG.md](LOG.md) | 研究日誌 |
 | [10_training_diagnostics.md](10_training_diagnostics.md) | 模型有沒有真的訓練到：學習曲線、能力測試、打亂標籤對照 |
 | [09_model_review.md](09_model_review.md) | 21 個模型的設計審查、新增 DLinear / PatchTST / iTransformer / TSMixer、LLM 與基礎模型的評估 |
-| [08_model_comparison.md](08_model_comparison.md) | **GRU / LSTM / Transformer 正確訓練後與規則、隨機、Buy & Hold 的比較（最終結論）** |
+| [12_architecture_grid.md](12_architecture_grid.md) | 舊流程中 8 種架構（含 PatchTST、iTransformer、TSMixer、DLinear）× 3 seeds 的比較 |
+| [08_model_comparison.md](08_model_comparison.md) | GRU / LSTM / Transformer 正確訓練後與規則、隨機、Buy & Hold 的比較 |
 | [results/](results/) | 實驗結果 CSV |
 | [07_fixed_rerun.md](07_fixed_rerun.md) | **修正 🔴 錯誤後重跑的真實結果**與基準比較 |
 | [06_reproduction.md](06_reproduction.md) | 2026-10 實際重跑的環境、資料與結果比對（結果已重現） |
@@ -44,7 +45,14 @@
 
 **模型比較的結論（見 08）**：以 lr 1e-4、50 epochs、自動閾值、固定 1 股部位重新訓練 GRU / LSTM / Transformer / 加位置編碼的 Transformer（各 3 個 seed）。最好的 GRU 測試 AUC 0.649，但只和「收盤價相對 20 日均線」這條一行規則打平（0.627；第 1–2 天 0.780 vs 0.779；驗證集上規則反而較好）。反轉 26 個抓到約 6 個，精確率約 5%。回測無法穩定勝過 Buy & Hold 或隨機進出場。`parameters.json` 的預設值已改為 GRU 設定。
 
-**建議下一步**（詳見 08 §7）：改正規化方式（加入相對均線等特徵）、改用較容易預測的反轉標籤、walk-forward 驗證，並以均線規則為基準只學殘差。
+**v2 研究的最終結論（見 [11](11_v2_study.md)、[12](12_architecture_grid.md)、[LOG](LOG.md)）**：資料延長到 1993–2023，改用跨視窗可比的特徵、hazard 輸出頭，以 walk-forward 8 個時段（2008–2023）搭配 bootstrap 檢定：
+
+- **趨勢**：沒有任何模型或架構（共 12 種）在多個時段都勝過「收盤價相對 MA20」規則。第 6 天以後所有方法都接近隨機。
+- **反轉**：**hazard 輸出頭的 GRU 在 8/8 個時段勝過基準**（10 天事件 AUC 0.594 vs 0.521，AP 0.304 vs 0.236）；集成後相對 logreg 的差距達統計顯著（p = 0.018）。效果一致，但幅度小。
+- **貢獻最大的改動**：hazard 頭（+0.037）> 多指數訓練（+0.028）> 不含未來資訊的已確認趨勢特徵（+0.022）。更新的架構、正則化、總經特徵、國際資料、LightGBM 都沒有幫助。
+- **交易**：「波峰警報當天空手」（`peak_exit`）Sharpe 0.55 vs Buy & Hold 0.50，最大回撤 −35% vs −53%，勝過 93% 的隨機出場安排，但尚未達到統計顯著。
+
+**下一步建議**見 [11 §5](11_v2_study.md)：在更多市場上測試以增加反轉樣本、機率校準、調整警報規則；新聞情緒特徵或時間序列基礎模型需要另外的資料與網路權限。
 
 ## 注意事項
 
