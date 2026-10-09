@@ -1,7 +1,8 @@
 """Runs a grid of model configurations on the same (cached) dataset and summarises them.
 
 Usage (from the repository root):
-    python research/scripts/run_experiments.py <out_dir> [--quick]
+    python research/scripts/run_experiments.py <out_dir> [--quick] [--models=GRU,LSTM,...] [--dropout=0.1]
+                                               [--with-original] [--lightgbm]
 
 Each experiment writes the usual reports/plots under <out_dir>/<name>/, and the
 script appends one row per (experiment, split) to <out_dir>/summary.csv, together
@@ -28,18 +29,21 @@ from preprocessor.preprocessor import Preprocessor  # noqa: E402
 OUT_DIR = sys.argv[1]
 QUICK = '--quick' in sys.argv
 
+MODELS = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--models=')),
+              ['GRU', 'LSTM', 'TransformerModel', 'TransformerEncoderPE'])
+SEEDS = [42] if QUICK else [42, 1, 2]
+DROPOUT = float(next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--dropout=')), 0))
 COMMON = {'learning_rate': 1e-4, 'training_epoch_num': 50, 'patience': 10, 'batch_size': 32,
-          'threshold': 'auto', 'dropout': 0}
-EXPERIMENTS = [
-    # name, overrides
-    ('Transformer_orig_lr1e-5_ep10', {'model_type': 'TransformerModel', 'learning_rate': 1e-5,
-                                      'training_epoch_num': 10, 'patience': 100}),
-]
-for model_type in ['GRU', 'LSTM', 'TransformerModel', 'TransformerEncoderPE']:
-    for seed in ([42] if QUICK else [42, 1, 2]):
+          'threshold': 'auto', 'dropout': DROPOUT}
+EXPERIMENTS = []
+if '--with-original' in sys.argv:
+    EXPERIMENTS.append(('Transformer_orig_lr1e-5_ep10', {'model_type': 'TransformerModel', 'learning_rate': 1e-5,
+                                                          'training_epoch_num': 10, 'patience': 100}))
+for model_type in MODELS:
+    for seed in SEEDS:
         EXPERIMENTS.append((f'{model_type}_s{seed}', {**COMMON, 'model_type': model_type, 'seed': seed}))
 if QUICK:
-    EXPERIMENTS = [(n, {**o, 'training_epoch_num': 2}) for n, o in EXPERIMENTS[:2]]
+    EXPERIMENTS = [(n, {**o, 'training_epoch_num': 2}) for n, o in EXPERIMENTS]
 
 with open('parameters.json') as f:
     BASE_PARAMS = json.load(f)
@@ -93,6 +97,35 @@ for split, y_true_t, dates in [('val', y_val, val_dates), ('test', y_test, test_
                      'auc_flat': roc_auc_score(y_true.ravel(), np.repeat(score, y_true.shape[1])),
                      'auc_d1_2': np.nanmean(aucs[:2]), 'auc_d1_5': np.nanmean(aucs[:5]), 'auc_d6_16': np.nanmean(aucs[5:]),
                      **{f'auc_d{k + 1}': a for k, a in enumerate(aucs)}})
+
+
+
+def window_features(X):
+    """Last day, 5-day mean, 64-day mean and 5-day change of every (window-scaled) feature."""
+    X = X.numpy()
+    return np.concatenate([X[:, -1], X[:, -5:].mean(1), X.mean(1), X[:, -1] - X[:, -6]], axis=1)
+
+
+if '--lightgbm' in sys.argv:
+    import lightgbm as lgb
+    X_train_t, y_train_t = _cached[0], _cached[1]
+    F_train, F_val, F_test = window_features(X_train_t), window_features(X_val), window_features(X_test)
+    for seed in SEEDS:
+        probs = {'val': [], 'test': []}
+        for k in range(y_train_t.shape[1]):
+            clf = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.02, num_leaves=15, min_child_samples=100,
+                                     subsample=0.8, subsample_freq=1, colsample_bytree=0.5, random_state=seed, verbose=-1)
+            clf.fit(F_train, y_train_t[:, k].numpy())
+            probs['val'].append(clf.predict_proba(F_val)[:, 1])
+            probs['test'].append(clf.predict_proba(F_test)[:, 1])
+        for split, ys in [('val', y_val), ('test', y_test)]:
+            yt, prob = ys.numpy(), np.stack(probs[split], axis=1)
+            aucs = per_step_auc(yt, prob)
+            rows.append({'experiment': f'LightGBM_s{seed}', 'split': split, 'model': 'LightGBM', 'seed': seed,
+                         'auc_flat': roc_auc_score(yt.ravel(), prob.ravel()), 'auc_d1_2': np.nanmean(aucs[:2]),
+                         'auc_d1_5': np.nanmean(aucs[:5]), 'auc_d6_16': np.nanmean(aucs[5:]),
+                         **{f'auc_d{k + 1}': a for k, a in enumerate(aucs)}})
+        print(f'done LightGBM_s{seed}', flush=True)
 
 for name, overrides in EXPERIMENTS:
     params = copy.deepcopy(BASE_PARAMS)
