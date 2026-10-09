@@ -76,7 +76,27 @@ def block_bootstrap_auc_diff(y, s_model, s_base, block=20, n=1000):
     return float(np.mean(diffs)), float(np.percentile(diffs, 2.5)), float(np.percentile(diffs, 97.5)), float((diffs <= 0).mean())
 
 
-def backtest(p_down, close, open_, ma20, threshold=0.5):
+def reversal_positions(p_now_down, event, thr):
+    """Two strategies that use the reversal (event) probability directly.
+
+    peak_exit       : long, except on days with a peak alarm (current trend up and event >= thr).
+    reversal_switch : leave on a peak alarm, stay flat until a valley alarm (current trend down and event >= thr).
+    """
+    peak = (p_now_down < 0.5) & (event >= thr)
+    valley = (p_now_down >= 0.5) & (event >= thr)
+    exit_ = (~peak).astype(float)
+    switch = np.ones(len(event))
+    state = 1.0
+    for i in range(len(event)):
+        if peak[i]:
+            state = 0.0
+        elif valley[i]:
+            state = 1.0
+        switch[i] = state
+    return exit_, switch
+
+
+def backtest(p_down, close, open_, ma20, threshold=0.5, p_now_down=None, event=None, event_thr=None):
     """Signal at the close of day t, trade at the open of t+1; returns are open-to-open."""
     ret = open_[2:] / open_[1:-1] - 1  # return earned by the position chosen at the close of t
     signals = {
@@ -85,6 +105,10 @@ def backtest(p_down, close, open_, ma20, threshold=0.5):
         'model_long': (p_down[:-2] < threshold).astype(float),
         'model_long_short': np.where(p_down[:-2] < threshold, 1.0, -1.0),
     }
+    if event is not None:
+        exit_, switch = reversal_positions(p_now_down, event, event_thr)
+        signals['model_peak_exit'] = exit_[:-2]
+        signals['model_reversal_switch'] = switch[:-2]
     out = {}
     for name, pos in signals.items():
         turn = np.abs(np.diff(np.concatenate([[0.0], pos])))
@@ -157,7 +181,11 @@ def main():
             pooled[name].append(dict(Y=Y, rev=rev, **{k2: v for k2, v in s.items() if not k2.startswith('thr')},
                                      thr={e: s.get(f'thr{e}') for e in EVENT_M}))
         for m in models:
-            for name, r in backtest(f['preds'][m]['test_trend'][:, :5].mean(1), lab['close'], lab['open'], lab['ma20']).items():
+            p = f['preds'][m]
+            q = 1 - (val['rev'] <= 10).mean()
+            for name, r in backtest(p['test_trend'][:, :5].mean(1), lab['close'], lab['open'], lab['ma20'],
+                                    p_now_down=p['test_trend'][:, 0], event=p['test_event10'],
+                                    event_thr=np.quantile(p['val_event10'], q)).items():
                 bt[(m, name)].append(r)
     per_fold = pd.DataFrame(rows)
     per_fold.to_csv(os.path.join(out_dir, 'per_fold.csv'), index=False)
@@ -221,7 +249,8 @@ def main():
     perf_rows = []
     for (m, name), parts in bt.items():
         perf_rows.append(dict(model=m, strategy=name, **perf(np.concatenate(parts))))
-    perf_df = pd.DataFrame(perf_rows).drop_duplicates(subset=['strategy', 'cagr'])
+    perf_df = pd.DataFrame(perf_rows)
+    perf_df = perf_df[~perf_df.strategy.isin(['buy_hold', 'ma20_long']) | ~perf_df.duplicated(subset=['strategy'])]
     perf_df.to_csv(os.path.join(out_dir, 'backtest.csv'), index=False)
 
     summary.to_csv(os.path.join(out_dir, 'summary.csv'))
