@@ -6,6 +6,8 @@
 
 ## 🔴 1. 回測使用的是真實未來標籤，不是模型預測
 
+> ✅ 已於 2026-10-09 修正，結果見 [07_fixed_rerun.md](07_fixed_rerun.md)。
+
 **位置**：`postprocessor/postprocessor.py:232-233`、`evaluator/evaluator.py:1035-1048`
 
 ```python
@@ -29,6 +31,8 @@ passing_trade_signals = \
 
 ## 🔴 2. 反轉三分類 / 二分類混淆矩陣是「真實 vs 真實」
 
+> ✅ 已於 2026-10-09 修正，結果見 [07_fixed_rerun.md](07_fixed_rerun.md)。
+
 **位置**：`postprocessor.py:238-240`、`evaluator.py:1012-1018`
 
 `reversals_test = calculate_reversal_dates(y_test...)`、`reversals_pred_pass = calculate_reversal_dates_with_signals(y_test...)[0]`，兩者都由 `y_test` 產生（差別只在是否跳過重複視窗）。
@@ -40,6 +44,8 @@ passing_trade_signals = \
 ---
 
 ## 🔴 3. logits 從未經過 sigmoid / 閾值就被當成 0/1 使用
+
+> ✅ 已於 2026-10-09 修正，結果見 [07_fixed_rerun.md](07_fixed_rerun.md)。
 
 **位置**：`main.py:71,106`（`y_preds = model(X)` 直接傳入）→ `postprocessor.py:219` → `postprocessor.py:63-69`、`evaluator.py:46-48`
 
@@ -71,6 +77,8 @@ passing_trade_signals = \
 ---
 
 ## 🟠 5. Early stopping 的 rollback 無效
+
+> ✅ 已於 2026-10-09 修正，結果見 [07_fixed_rerun.md](07_fixed_rerun.md)。
 
 **位置**：`model/model.py:162`
 

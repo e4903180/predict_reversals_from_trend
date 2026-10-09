@@ -5,7 +5,6 @@ from postprocessor.postprocessor import Postprocessor
 from evaluator.evaluator import Evaluator
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import random
 import torch
 import torch.nn as nn
@@ -27,10 +26,23 @@ class ReversePrediction():
             seed_value (int): The seed value to be used for random number generation.
         """
         np.random.seed(seed_value)
-        tf.random.set_seed(seed_value)
         random.seed(seed_value)
         torch.manual_seed(seed_value)
         torch.cuda.manual_seed_all(seed_value)
+
+    def predict_proba(self, model, X):
+        """Returns the predicted probability of a downtrend (label 1) for each future step.
+
+        Args:
+            model (nn.Module): The trained model, which outputs logits.
+            X (torch.Tensor): Input features.
+
+        Returns:
+            torch.Tensor: Probabilities with shape (samples, predict_steps).
+        """
+        model.eval()
+        with torch.no_grad():
+            return torch.sigmoid(model(X))
 
     def run(self, params):
         """Executes the trend reversal prediction workflow, including preprocessing, model training, and evaluation.
@@ -52,9 +64,10 @@ class ReversePrediction():
         train_dataset = TensorDataset(X_train, y_train)
         val_dataset = TensorDataset(X_val, y_val)
         test_dataset = TensorDataset(X_test, y_test)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-        test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+        batch_size = params.get('batch_size', 32)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         
         # Train the model
         start_time = time.time()
@@ -68,11 +81,13 @@ class ReversePrediction():
         torch.save(model, params['save_path']['trained_model_path'])
         
         # Post-process and evaluate on validation data
-        y_preds_val = model(X_val)
+        threshold = params.get('threshold', 0.5)
+        y_preds_val = self.predict_proba(model, X_val)
         postprocessor = Postprocessor(params)
 
-        # Call the postprocess_signals method
-        postprocess_results = postprocessor.postprocess_predictions(y_preds_val, y_val, val_dates, target_dataset)
+        # Call the postprocess_signals method on binarized predictions (copies, so y_preds_val/y_val stay intact)
+        postprocess_results = postprocessor.postprocess_predictions(
+            (y_preds_val > threshold).float(), y_val.clone(), val_dates, target_dataset)
 
         # Extract values from the results dictionary
         y_preds_val_reverse_idx = postprocess_results['y_preds_indices']
@@ -103,11 +118,12 @@ class ReversePrediction():
             json.dump(val_result, f)
 
         # Post-process and evaluate on test data
-        y_preds = model(X_test)
+        y_preds = self.predict_proba(model, X_test)
         postprocessor = Postprocessor(params)
 
-        # Call the postprocess_signals method
-        postprocess_results = postprocessor.postprocess_predictions(y_preds, y_test, test_dates, target_dataset)
+        # Call the postprocess_signals method on binarized predictions (copies, so y_preds/y_test stay intact)
+        postprocess_results = postprocessor.postprocess_predictions(
+            (y_preds > threshold).float(), y_test.clone(), test_dates, target_dataset)
 
         # Extract values from the results dictionary
         y_preds_reverse_idx = postprocess_results['y_preds_indices']
