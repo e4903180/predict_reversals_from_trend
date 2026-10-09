@@ -115,9 +115,10 @@ Self-attention 對輸入順序置換不變；沒有 positional encoding 時，�
 
 ## 🟡 9. 資料期間與 README 不符
 
+> ✅ 2026-10-09 已實測確認：`^VIX3M` 最早只到 2006-07-17（見 06）。
+
 `^VIX3M`（3M Volatility）在 Yahoo 的歷史比 2001 短，`CleanerMissingValue('auto')` 會刪除開頭所有含 NaN 的列。由 `val_summary.json` 的日期回推，有效起點約為 2006 年中，而非 README 所寫的 2001 年（推導見 01 §4）。若要使用 2001 年起的資料，需要拿掉 VIX3M 或改用 `^VIX`（1990 起）。
 
-> 本次環境無法連線 Yahoo（HTTP 403），以上為由輸出結果反推，建議重跑時印出 `dataset.index.min()` 確認。
 
 ## 🟡 10. 標籤邊界效應
 

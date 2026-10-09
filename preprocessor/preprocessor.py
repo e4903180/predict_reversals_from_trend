@@ -35,7 +35,8 @@ class Preprocessor:
             self.start_date = start_date
         if end_date:
             self.end_date = end_date
-        return yf.download(stock_symbol, start=self.start_date, end=self.end_date)
+        return yf.download(stock_symbol, start=self.start_date, end=self.end_date,
+                           auto_adjust=False, multi_level_index=False, progress=False)
 
     def add_feature(self, data, feature_type, *args, **kwargs):
         """Add a feature to the data using the specified feature type.

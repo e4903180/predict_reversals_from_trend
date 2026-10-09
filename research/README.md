@@ -14,6 +14,8 @@
 | [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
 | [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
 | [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
+| [06_reproduction.md](06_reproduction.md) | 2026-10 實際重跑的環境、資料與結果比對（結果已重現） |
+| [data/raw/](data/raw/) | 下載快取的原始價格資料（9 個代號） |
 | [data/legacy_experiments_2024-05.csv](data/legacy_experiments_2024-05.csv) | 從 git 歷史抽出的 108 組舊實驗指標 |
 | [data/extract_legacy_experiments.py](data/extract_legacy_experiments.py) | 產生上述 CSV 的腳本（在 repo 根目錄執行 `python3 research/data/extract_legacy_experiments.py > out.csv`） |
 
@@ -36,5 +38,5 @@
 
 ## 注意事項
 
-- 本次分析**沒有重跑訓練**：雲端環境無法連線 Yahoo Finance（403），且未安裝 torch / TA-Lib；結論來自靜態程式閱讀 + 已存在的 `outputs/reports/*.json` + git 歷史中的實驗結果。
-- 程式依賴 2024 年的套件版本（pandas 2.x 時代的 `fillna(method=...)`、鏈式賦值、`Series[int]` 位置索引），在 pandas 3.x 會出錯，重跑前需鎖定版本或修改（見 05）。
+- 最初的靜態分析之後，已在 2026-10-09 實際重跑，結果與 repo 中的 `outputs/` 幾乎一致，見 [06_reproduction.md](06_reproduction.md)。
+- 原程式需要 pandas 1.x；已做最小的相容性修正，可在 pandas 2.3 上執行（見 06）。
