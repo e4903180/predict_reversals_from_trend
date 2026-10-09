@@ -926,7 +926,8 @@ class Evaluator:
                 trade_details['Stop buy loss'].iloc[idx] = np.nan
                 trade_details['Stop buy win'].iloc[idx] = np.nan
             elif order == 'Buy':
-                if cash_before <= 0:
+                # Fixed position: hold at most 1 share, so repeated Buy signals do not pile up
+                if cash_before <= 0 or position_before >= 1:
                     shares_Buy = 0
                     trade_details['Order'].iloc[idx] = np.nan
                 else:

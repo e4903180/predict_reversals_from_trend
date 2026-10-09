@@ -14,6 +14,8 @@
 | [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
 | [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
 | [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
+| [08_model_comparison.md](08_model_comparison.md) | **GRU / LSTM / Transformer 正確訓練後與規則、隨機、Buy & Hold 的比較（最終結論）** |
+| [results/](results/) | 實驗結果 CSV |
 | [07_fixed_rerun.md](07_fixed_rerun.md) | **修正 🔴 錯誤後重跑的真實結果**與基準比較 |
 | [06_reproduction.md](06_reproduction.md) | 2026-10 實際重跑的環境、資料與結果比對（結果已重現） |
 | [scripts/](scripts/) | 指標對照與基準計算腳本 |
@@ -36,7 +38,9 @@
 
 **修正後重跑的結果（見 07）**：🔴 1–3 已修正（commit 於本分支）。使用同一組模型權重，正確評估後：測試集 ROC-AUC 0.659 → **0.543**、趨勢準確率 0.712（「永遠猜漲」為 0.707）、26 個真實反轉只抓到 1 個、回測從 +12,808 變成 **−7,509**（Buy & Hold +1,172）。原本的 0.659 恰好等於「把第 2 天的預測複製到全部 16 天」的 AUC。目前模型實質上只會猜漲；唯一的正面訊號是未來第 1–2 天的 AUC 約 0.74–0.77（測試集）。
 
-**建議下一步**（詳見 05、07 §5）：在驗證集上調整閾值、提高學習率與 epoch、改用固定部位回測，再比較 GRU / LSTM / 加位置編碼的 Transformer。
+**模型比較的結論（見 08）**：以 lr 1e-4、50 epochs、自動閾值、固定 1 股部位重新訓練 GRU / LSTM / Transformer / 加位置編碼的 Transformer（各 3 個 seed）。最好的 GRU 測試 AUC 0.649，但只和「收盤價相對 20 日均線」這條一行規則打平（0.627；第 1–2 天 0.780 vs 0.779；驗證集上規則反而較好）。反轉 26 個抓到約 6 個，精確率約 5%。回測無法穩定勝過 Buy & Hold 或隨機進出場。`parameters.json` 的預設值已改為 GRU 設定。
+
+**建議下一步**（詳見 08 §7）：改正規化方式（加入相對均線等特徵）、改用較容易預測的反轉標籤、walk-forward 驗證，並以均線規則為基準只學殘差。
 
 ## 注意事項
 
