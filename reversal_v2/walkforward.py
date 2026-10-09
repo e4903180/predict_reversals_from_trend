@@ -32,16 +32,25 @@ FOLDS = [(pd.Timestamp(f'{y}-01-01'), pd.Timestamp(f'{y + 1}-12-31')) for y in r
 FIRST_DATE = pd.Timestamp('1993-01-01')  # after the 200-day warm-up of the 1992 series
 
 
-def load_all():
-    frames = {s: D.build_index_frame(s) for s in D.INDICES}
-    cols = D.feature_columns(frames['GSPC'])
+FEATURE_GROUPS = {
+    'confirmed': ['conf_type', 'conf_age', 'conf_move'],
+    'macro': ['vix', 'vix_ma20', 'vix_chg5', 'tnx', 'tnx_chg20', 'irx_chg20', 'term_spread'],
+    'volume': ['volu', 'mfi'],
+}
+
+
+def load_all(indices=None, drop_groups=()):
+    indices = indices or D.INDICES
+    frames = {s: D.build_index_frame(s) for s in indices}
+    drop = {c for g in drop_groups for c in FEATURE_GROUPS[g]}
+    cols = [c for c in D.feature_columns(frames['GSPC']) if c not in drop]
     out = {}
     for s, f in frames.items():
         f = f.loc[f.index >= FIRST_DATE]
         Y, first, rev, valid = D.make_targets(f['trend'], HORIZON)
         out[s] = dict(dates=f.index, X=f[cols].values.astype(np.float64), Y=Y, first=first, rev=rev,
                       valid=valid & ~np.isnan(first), close=f['close'].values, open=f['open'].values,
-                      ma20=f['ma20'].values)
+                      ma20=f['ma20'].values, conf_age=f['conf_age'].values, conf_type=f['conf_type'].values)
     return out, cols
 
 
@@ -186,15 +195,19 @@ def main():
     ap.add_argument('--folds', default='0-7')
     ap.add_argument('--seeds', default='42,1,2')
     ap.add_argument('--threads', type=int, default=0)
+    ap.add_argument('--train-indices', default=','.join(D.INDICES), help='indices used for training (GSPC always used for val/test)')
+    ap.add_argument('--drop-features', default='', help='comma-separated groups from FEATURE_GROUPS to leave out')
     args = ap.parse_args()
     if args.threads:
         torch.set_num_threads(args.threads)
     a, b = (args.folds.split('-') + [None])[:2]
     folds = range(int(a), int(b or a) + 1)
     seeds = [int(s) for s in args.seeds.split(',')]
-    all_data, cols = load_all()
+    indices = args.train_indices.split(',')
+    assert 'GSPC' in indices
+    all_data, cols = load_all(indices, [g for g in args.drop_features.split(',') if g])
     os.makedirs(args.out, exist_ok=True)
-    json.dump({'features': cols, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
+    json.dump({'features': cols, 'train_indices': indices, 'models': args.models, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
               open(os.path.join(args.out, 'config.json'), 'w'), indent=1)
     for k in folds:
         test_start, test_end = FOLDS[k]
@@ -208,14 +221,14 @@ def main():
                             close=all_data['GSPC']['close'][items[split][0]['pos']],
                             open=all_data['GSPC']['open'][items[split][0]['pos']],
                             ma20=all_data['GSPC']['ma20'][items[split][0]['pos']],
-                            conf_age=all_data['GSPC']['X'][items[split][0]['pos'], cols.index('conf_age')],
-                            conf_type=all_data['GSPC']['X'][items[split][0]['pos'], cols.index('conf_type')])
+                            conf_age=all_data['GSPC']['conf_age'][items[split][0]['pos']],
+                            conf_type=all_data['GSPC']['conf_type'][items[split][0]['pos']])
                 for split in ('val', 'test')}
         np.savez_compressed(os.path.join(fold_dir, 'labels.npz'), **{f'{s}_{k2}': v for s, d in meta.items() for k2, v in d.items()})
         n_train = sum(len(it['pos']) for it in items['train'])
         print(f'fold {k} test {test_start.date()}..{test_end.date()} train={n_train} val={len(meta["val"]["first"])} test={len(meta["test"]["first"])}', flush=True)
         for spec in args.models.split(','):
-            for seed in (seeds if spec not in ('logreg',) else seeds[:1]):
+            for seed in (seeds if spec not in ('logreg', 'lgbm') else seeds[:1]):
                 path = os.path.join(fold_dir, f'{spec}_s{seed}.npz')
                 if os.path.exists(path):
                     continue
