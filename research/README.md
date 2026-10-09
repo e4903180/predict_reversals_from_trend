@@ -14,6 +14,8 @@
 | [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
 | [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
 | [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
+| [10_training_diagnostics.md](10_training_diagnostics.md) | 模型有沒有真的訓練到：學習曲線、能力測試、打亂標籤對照 |
+| [09_model_review.md](09_model_review.md) | 21 個模型的設計審查、新增 DLinear / PatchTST / iTransformer / TSMixer、LLM 與基礎模型的評估 |
 | [08_model_comparison.md](08_model_comparison.md) | **GRU / LSTM / Transformer 正確訓練後與規則、隨機、Buy & Hold 的比較（最終結論）** |
 | [results/](results/) | 實驗結果 CSV |
 | [07_fixed_rerun.md](07_fixed_rerun.md) | **修正 🔴 錯誤後重跑的真實結果**與基準比較 |
