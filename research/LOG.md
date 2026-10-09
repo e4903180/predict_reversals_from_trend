@@ -89,3 +89,11 @@
 1. 加強正則化並降低學習率（lr 3e-4、hidden 32、dropout 0.3、weight decay 1e-3）。
 2. 消融實驗：拿掉已確認趨勢特徵、拿掉總經特徵、只用 ^GSPC 訓練，以量化每項改動的貢獻。
 3. 集成：把 GRU-hazard、TCN-hazard、MLP-hazard 的機率平均。
+
+### 16:50　集成（不需要重新訓練）
+- `ENS-hazard` = GRU-hazard、TCN-hazard、MLP-hazard 的機率平均（每個模型各 3 個 seed）。
+  - 趨勢 AUC 0.632（規則 0.612）。
+  - **10 天事件 AUC 0.582，相對趨勢年齡基準 +0.055（p = 0.07），相對 logreg +0.049，95% CI [0.004, 0.098]，p = 0.018**。這是第一個在合併 bootstrap 下顯著的結果。
+  - 回測仍不如 Buy & Hold（只做多 Sharpe 0.24）。
+- `ENS-GRU2` = GRU-hazard + GRU-bce16：事件 AP 最高（0.312），但 AUC 差異不顯著。
+- 16:45 啟動改進實驗 1：正則化版的 GRU / MLP，以及三個消融（拿掉已確認趨勢、拿掉總經、只用 ^GSPC 訓練）。
