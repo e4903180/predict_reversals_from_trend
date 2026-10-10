@@ -179,3 +179,10 @@
   - 對照：原本的 `le20`，每年 6.2 次
 - 「已確認趨勢」特徵配合各定義改寫：ZigZag 的轉折點在價格反向走滿 X% 那天才算確認。purge：le10 / le20 為 60 天、le30 為 69 天、ZigZag 為 120 天（ZigZag 沒有固定的確認延遲）。
 - 實驗：logreg、GRU-hazard、GRU-bce16、MLP-hazard × 8 個時段 × 3 seeds，在 4 個指數上測試，分兩批執行。
+
+### 21:30　反轉定義穩健性結果（[14_label_robustness.md](14_label_robustness.md)）
+- 5 種定義（le10 / le20 / le30 / zz5 / zz7）× 4 個指數 × 8 個時段。結果檔在 `research/results/v2_labels/`。
+- **集成（GRU-hazard + MLP-hazard）在 5/5 種定義下都顯著勝過趨勢年齡基準**（10 天事件，合併 bootstrap p ≤ 0.002；逐格勝率 21–29/32）。
+- **hazard 頭優於 16-BCE 頭，在 4/5 種定義下成立**。ZigZag 下最明顯：bce16 完全不勝過基準（p = 0.28 / 0.66），hazard 頭高度顯著。例外是 le10：兩者相近，單獨的 GRU 都不顯著。
+- ZigZag 的反轉比較好預測（基準約 0.57，模型約 0.67）；le10 最難（約 0.55）。
+- **交易**：預先固定的 `graded` 規則在 le20 / le30 / zz5 / zz7 的 16 格中有 14 格 Sharpe 高於 B&H，**但排除 2008–09 之後優勢消失**（多數為負，逐段勝率約 1–5/8）。交易上的好處只來自極端行情。
