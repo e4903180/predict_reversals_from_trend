@@ -91,6 +91,23 @@ class Postprocessor:
                 trade_signals.loc[test_dates[idx][reverse_idx[idx]], 'Order'] = 'Buy'
         return trade_signals
     
+    def get_trade_signals_from_reversal_dates(self, reversal_dates, test_dates, target_dataset):
+        """
+        Generates trade signals from a per-date reversal array (1 = Peak, -1 = Valley, 0 = none).
+
+        Args:
+            reversal_dates (ndarray): Reversal label for each date between the first and last test date.
+            test_dates (ndarray): Array of test dates.
+            target_dataset (pd.DataFrame): The target dataset.
+
+        Returns:
+            pd.DataFrame: DataFrame with generated trade signals.
+        """
+        trade_signals = pd.DataFrame(index=target_dataset.loc[test_dates[0][0]:test_dates[-1][-1]].index, columns=['Order'])
+        trade_signals.loc[reversal_dates == 1, 'Order'] = 'Sell'
+        trade_signals.loc[reversal_dates == -1, 'Order'] = 'Buy'
+        return trade_signals
+
     def compare_reverse_predictions(self, y_preds_reverse_idx, y_preds_reverse_signals, y_test_reverse_idx, y_test_reverse_signals):
         """
         Compares predicted reversal indices and signals with actual values.
@@ -229,13 +246,15 @@ class Postprocessor:
         predicted_trade_signals = \
             self.get_trade_signals(y_preds_reverse_signals, y_preds_reverse_idx, test_dates, target_dataset)
         
+        filtered_pred_reversal_dates, _, _ = \
+            self.calculate_reversal_dates_with_signals(y_preds_reverse_signals, y_preds_reverse_idx, test_dates, target_dataset)
         passing_trade_signals = \
-            self.get_trade_signals(y_test_reverse_signals, y_test_reverse_idx, test_dates, target_dataset)
+            self.get_trade_signals_from_reversal_dates(filtered_pred_reversal_dates, test_dates, target_dataset)
         
         comparison_summary = \
             self.compare_reverse_predictions(y_preds_reverse_idx, y_preds_reverse_signals, y_test_reverse_idx, y_test_reverse_signals)
         
-        filtered_reversal_dates, valid_signals, valid_indices = \
+        _, valid_signals, valid_indices = \
             self.calculate_reversal_dates_with_signals(y_test_reverse_signals, y_test_reverse_idx, test_dates, target_dataset)
         reversal_dates_test = self.calculate_reversal_dates(y_test_reverse_signals, y_test_reverse_idx, test_dates, target_dataset)
         
@@ -246,7 +265,7 @@ class Postprocessor:
             'predicted_trade_signals': predicted_trade_signals,
             'passing_trade_signals': passing_trade_signals,
             'comparison_summary': comparison_summary,
-            'filtered_reversal_dates': filtered_reversal_dates,
+            'filtered_reversal_dates': filtered_pred_reversal_dates,
             'reversal_dates_test': reversal_dates_test,
             'valid_signals': valid_signals,
             'valid_indices': valid_indices
