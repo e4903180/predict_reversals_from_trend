@@ -152,3 +152,13 @@
   - `walkforward.py --eval-indices`
   - `pooled.py`：32 格（指數 × 時段）的勝率與 sign test、跨指數的分層 block bootstrap、isotonic 校準、警報持續天數、各指數的 `peak_exit` 與隨機出場比較。
 - 啟動：logreg、GRU-hazard、GRU-bce16、MLP-hazard、TCN-hazard × 8 個時段 × 3 seeds。
+
+### 23:55 – 00:20　多指數驗證結果（[13_multi_index_validation.md](13_multi_index_validation.md)）
+- 反轉樣本 89 → 381。結果檔在 `research/results/v2_multi_index/`。
+- **GRU-hazard 的反轉預測在 32 格（4 個指數 × 8 個時段）中勝過基準：5 天事件 27/32（p = 0.0001），10 天事件 25/32（p = 0.001）**。在沒參與調整的指數上也成立（^IXIC 的 10 天 AUC 0.612）。
+- 合併 bootstrap：ENS-hazard 的 10 天事件相對趨勢年齡 +0.047，CI [0.015, 0.080]，p = 0.001；相對 logreg +0.022，p = 0.033。GRU-hazard 的 5 天事件 +0.038，p = 0.009。
+- hazard 頭 vs bce16 在 381 個反轉上仍成立：10 天事件勝過基準 25/32 vs 19/32。
+- 校準：所有模型的 Brier 都約等於「永遠預測基準率」，機率的排序有用但鑑別力低；在驗證集上做 isotonic 校準大多沒有幫助（hazard 頭本身的校準就比 bce16 好）。
+- 警報連續出現 k 天才觸發：誤報減少，精確率只提高約 1 個百分點，召回率明顯下降。
+- **`peak_exit` 沒有在其他指數上重現**：勝過隨機的比例 ^IXIC 70%、^DJI 32%、^RUT 12%；Sharpe 在 3 個指數上都低於 B&H。最大回撤的降低幾乎全部來自 2008–09 這一段（約 30% 的日子空手）。→ 修正 11 的結論：^GSPC 上的好成績很可能是運氣。
+- 結論：反轉訊號真實存在、跨市場一致，但很微弱；不足以直接轉化為交易優勢。

@@ -14,7 +14,8 @@
 | [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
 | [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
 | [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
-| [**11_v2_study.md**](11_v2_study.md) | **v2 研究總結：1993–2023 資料、hazard 輸出頭、walk-forward 8 個時段、顯著性檢定、反轉警報策略（最新結論）** |
+| [**13_multi_index_validation.md**](13_multi_index_validation.md) | **在 4 個指數上驗證（381 個反轉）：反轉預測的優勢跨市場成立；交易優勢沒有重現（最新結論）** |
+| [11_v2_study.md](11_v2_study.md) | **v2 研究總結：1993–2023 資料、hazard 輸出頭、walk-forward 8 個時段、顯著性檢定、反轉警報策略** |
 | [LOG.md](LOG.md) | 研究日誌 |
 | [10_training_diagnostics.md](10_training_diagnostics.md) | 模型有沒有真的訓練到：學習曲線、能力測試、打亂標籤對照 |
 | [09_model_review.md](09_model_review.md) | 21 個模型的設計審查、新增 DLinear / PatchTST / iTransformer / TSMixer、LLM 與基礎模型的評估 |
@@ -50,9 +51,10 @@
 - **趨勢**：沒有任何模型或架構（共 12 種）在多個時段都勝過「收盤價相對 MA20」規則。第 6 天以後所有方法都接近隨機。
 - **反轉**：**hazard 輸出頭的 GRU 在 8/8 個時段勝過基準**（10 天事件 AUC 0.594 vs 0.521，AP 0.304 vs 0.236）；集成後相對 logreg 的差距達統計顯著（p = 0.018）。效果一致，但幅度小。
 - **貢獻最大的改動**：hazard 頭（+0.037）> 多指數訓練（+0.028）> 不含未來資訊的已確認趨勢特徵（+0.022）。更新的架構、正則化、總經特徵、國際資料、LightGBM 都沒有幫助。
-- **交易**：「波峰警報當天空手」（`peak_exit`）Sharpe 0.55 vs Buy & Hold 0.50，最大回撤 −35% vs −53%，勝過 93% 的隨機出場安排，但尚未達到統計顯著。
+- **多指數驗證（[13](13_multi_index_validation.md)，381 個反轉）**：GRU-hazard 的反轉預測在 32 格（4 個指數 × 8 個時段）中勝過基準 27/32（5 天，p = 0.0001）、25/32（10 天，p = 0.001）；集成的合併 bootstrap p = 0.001。**訊號真實且跨市場一致，但很微弱**（AUC 約 0.58–0.60）。
+- **交易**：^GSPC 上的「波峰警報當天空手」（Sharpe 0.55 vs 0.50）**沒有在 ^IXIC / ^DJI / ^RUT 上重現**；回撤降低主要來自 2008–09。反轉訊號目前不足以直接轉化為交易優勢。
 
-**下一步建議**見 [11 §5](11_v2_study.md)：在更多市場上測試以增加反轉樣本、機率校準、調整警報規則；新聞情緒特徵或時間序列基礎模型需要另外的資料與網路權限。
+**下一步建議**見 [13 §6](13_multi_index_validation.md)：把反轉機率用於調整部位大小（風險控管）而非買賣、檢驗不同的反轉定義（order 10/30、ZigZag）、加入價格以外的資訊（新聞、選擇權）。
 
 ## 注意事項
 
