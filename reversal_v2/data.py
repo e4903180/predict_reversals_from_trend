@@ -11,6 +11,24 @@ import pandas as pd
 import talib
 from scipy.signal import argrelextrema
 
+LABEL = 'le20'  # 'leN' = local extrema of order N; 'zzX' = ZigZag with an X% reversal threshold
+
+
+def set_label(spec):
+    """Selects the reversal definition used by every later call (labels and confirmed-trend features)."""
+    global LABEL
+    assert spec[:2] in ('le', 'zz'), spec
+    LABEL = spec
+
+
+def label_purge_days(spec=None):
+    """Calendar days between train/val/test so no label looks into the next set."""
+    spec = spec or LABEL
+    if spec.startswith('le'):
+        return max(60, int((16 + int(spec[2:])) * 1.5))
+    return 120  # ZigZag pivots have no fixed confirmation lag
+
+
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'research', 'data', 'raw_v2')
 INDICES = ['GSPC', 'IXIC', 'DJI', 'RUT']
 MACRO = ['VIX', 'IRX', 'FVX', 'TNX']
@@ -51,6 +69,74 @@ def trend_labels(close, order=20):
         trend[i0:i1] = 1.0 if k0 == 'max' else 0.0
     trend = pd.Series(trend, index=close.index).ffill()
     return trend, filtered
+
+
+def zigzag_pivots(values, pct):
+    """ZigZag on closes: a max is a pivot once the price falls `pct` below it, a min once it rises `pct` above it.
+
+    Returns a list of (pivot_index, 'max' | 'min', confirmation_index).
+    """
+    pivots, direction, ext = [], 0, 0
+    for i in range(1, len(values)):
+        if direction == 0:
+            if values[i] >= values[0] * (1 + pct):
+                direction, ext = 1, i
+            elif values[i] <= values[0] * (1 - pct):
+                direction, ext = -1, i
+        elif direction == 1:
+            if values[i] >= values[ext]:
+                ext = i
+            elif values[i] <= values[ext] * (1 - pct):
+                pivots.append((ext, 'max', i))
+                direction, ext = -1, i
+        else:
+            if values[i] <= values[ext]:
+                ext = i
+            elif values[i] >= values[ext] * (1 + pct):
+                pivots.append((ext, 'min', i))
+                direction, ext = 1, i
+    return pivots
+
+
+def zigzag_labels(close, pct):
+    """Trend label (0 up, 1 down) between ZigZag pivots; after the last pivot the current leg's direction."""
+    pivots = zigzag_pivots(close.values, pct)
+    trend = np.full(len(close), np.nan)
+    for (i0, k0, _), (i1, _, _) in zip(pivots[:-1], pivots[1:]):
+        trend[i0:i1] = 1.0 if k0 == 'max' else 0.0
+    if pivots:
+        i0, k0, _ = pivots[-1]
+        trend[i0:] = 1.0 if k0 == 'max' else 0.0
+    return pd.Series(trend, index=close.index), pivots
+
+
+def zigzag_confirmed_features(close, pct):
+    """Last ZigZag pivot known at day t (i.e. confirmed on or before t): type, age and move since."""
+    values = close.values
+    n = len(values)
+    last_type, last_pos = np.zeros(n), np.full(n, -1)
+    for piv, kind, conf in zigzag_pivots(values, pct):
+        last_type[conf:] = 1 if kind == 'max' else -1
+        last_pos[conf:] = piv
+    idx = np.arange(n)
+    age = np.where(last_pos >= 0, idx - last_pos, np.nan)
+    ref = np.where(last_pos >= 0, values[np.clip(last_pos, 0, None)], np.nan)
+    return pd.DataFrame({'conf_type': last_type, 'conf_age': np.log1p(age),
+                         'conf_move': np.log(values / ref)}, index=close.index)
+
+
+def labels_for(close, spec=None):
+    spec = spec or LABEL
+    if spec.startswith('le'):
+        return trend_labels(close, order=int(spec[2:]))[0]
+    return zigzag_labels(close, int(spec[2:]) / 100)[0]
+
+
+def confirmed_for(close, spec=None):
+    spec = spec or LABEL
+    if spec.startswith('le'):
+        return confirmed_trend_features(close, order=int(spec[2:]))
+    return zigzag_confirmed_features(close, int(spec[2:]) / 100)
 
 
 def confirmed_trend_features(close, order=20):
@@ -118,7 +204,7 @@ def index_features(df, has_volume=True):
         v = df['Volume'].replace(0, np.nan)
         f['volu'] = np.log(v / v.rolling(60).mean())
         f['mfi'] = (talib.MFI(h, l, c, v.fillna(0), 14) - 50) / 50
-    f = f.join(confirmed_trend_features(c))
+    f = f.join(confirmed_for(c))
     return f
 
 
@@ -138,12 +224,12 @@ def macro_features(index):
     return f
 
 
-def build_index_frame(symbol, order=20):
+def build_index_frame(symbol):
     """Features + trend label for one index."""
     df = load_raw(symbol)
     df = df[df['Close'] > 0]
     feats = index_features(df, has_volume=True).join(macro_features(df.index))
-    trend, _ = trend_labels(df['Close'], order=order)
+    trend = labels_for(df['Close'])
     out = feats.copy()
     out['trend'] = trend
     out['close'] = df['Close']

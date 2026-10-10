@@ -17,7 +17,7 @@ from scipy.stats import binomtest
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
-from reversal_v2.analyze import COST, age_hazard_baseline, load_run, perf, reversal_positions
+from reversal_v2.analyze import COST, age_hazard_baseline, load_run, perf, reversal_positions, use_run_label
 from reversal_v2.walkforward import EVENT_M
 
 RNG = np.random.default_rng(0)
@@ -86,6 +86,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     symbols = args.symbols.split(',')
     ensembles = {s.split('=')[0]: s.split('=')[1].split('+') for s in args.ensemble}
+    use_run_label(args.run_root)
     cells = collect(args.run_root, symbols, ensembles)
     models = sorted(set.intersection(*[set(c['preds']) for c in cells.values()]) - {'age_hazard'})
 

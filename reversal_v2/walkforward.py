@@ -26,7 +26,12 @@ from reversal_v2.models import ReversalNet
 
 HORIZON = 16
 LOOK_BACK = 64
-PURGE = pd.Timedelta(days=60)
+
+
+def purge():
+    """Gap between sets; depends on how far ahead the selected label looks."""
+    return pd.Timedelta(days=D.label_purge_days())
+
 EVENT_M = (5, 10)
 FOLDS = [(pd.Timestamp(f'{y}-01-01'), pd.Timestamp(f'{y + 1}-12-31')) for y in range(2008, 2024, 2)]
 FIRST_DATE = pd.Timestamp('1993-01-01')  # after the 200-day warm-up of the 1992 series
@@ -65,9 +70,9 @@ def split_fold(all_data, test_start, test_end):
     val_start = test_start - pd.DateOffset(years=2)
     sets = {'train': {}, 'val': {}, 'test': {}}
     for s, d in all_data.items():
-        sets['train'][s] = fold_positions(d, FIRST_DATE, val_start - PURGE)
+        sets['train'][s] = fold_positions(d, FIRST_DATE, val_start - purge())
     g = all_data['GSPC']
-    sets['val']['GSPC'] = fold_positions(g, val_start, test_start - PURGE)
+    sets['val']['GSPC'] = fold_positions(g, val_start, test_start - purge())
     sets['test']['GSPC'] = fold_positions(g, test_start, test_end)
     return sets
 
@@ -218,6 +223,7 @@ def main():
     ap.add_argument('--threads', type=int, default=0)
     ap.add_argument('--train-indices', default=','.join(D.INDICES), help='indices used for training (GSPC always used for val/test)')
     ap.add_argument('--drop-features', default='', help='comma-separated groups from FEATURE_GROUPS to leave out')
+    ap.add_argument('--label', default='le20', help="reversal definition: 'leN' local extrema of order N, 'zzX' ZigZag X%%")
     ap.add_argument('--eval-indices', default='', help='extra indices to predict on the test block; saved under <out>/<SYM>/')
     args = ap.parse_args()
     if args.threads:
@@ -225,11 +231,12 @@ def main():
     a, b = (args.folds.split('-') + [None])[:2]
     folds = range(int(a), int(b or a) + 1)
     seeds = [int(s) for s in args.seeds.split(',')]
+    D.set_label(args.label)
     indices = args.train_indices.split(',')
     assert 'GSPC' in indices
     all_data, cols = load_all(indices, [g for g in args.drop_features.split(',') if g])
     os.makedirs(args.out, exist_ok=True)
-    json.dump({'features': cols, 'train_indices': indices, 'models': args.models, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
+    json.dump({'label': args.label, 'purge_days': D.label_purge_days(), 'features': cols, 'train_indices': indices, 'models': args.models, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
               open(os.path.join(args.out, 'config.json'), 'w'), indent=1)
     for k in folds:
         test_start, test_end = FOLDS[k]
