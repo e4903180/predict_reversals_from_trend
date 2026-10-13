@@ -1,0 +1,61 @@
+{
+ "label": "le20",
+ "raw_dir": "raw_v3",
+ "strict_labels": true,
+ "purge_days": 60,
+ "features": [
+  "ret1",
+  "ret5",
+  "ret20",
+  "ret60",
+  "ma5",
+  "ma20",
+  "ma60",
+  "ma200",
+  "vol20",
+  "vol60",
+  "vol_ratio",
+  "atr",
+  "rsi",
+  "macd",
+  "macd_hist",
+  "stoch",
+  "willr",
+  "cci",
+  "adx",
+  "aroon",
+  "bb_pos",
+  "bb_width",
+  "dd20",
+  "du20",
+  "dd60",
+  "du60",
+  "volu",
+  "mfi",
+  "conf_type",
+  "conf_age",
+  "conf_move",
+  "vix",
+  "vix_ma20",
+  "vix_chg5",
+  "tnx",
+  "tnx_chg20",
+  "irx_chg20",
+  "term_spread"
+ ],
+ "train_indices": [
+  "GSPC",
+  "IXIC",
+  "DJI",
+  "RUT"
+ ],
+ "models": "logreg,GRU-hazard,GRU-cumevent,GRU-bce16,MLP-hazard",
+ "horizon": 16,
+ "look_back": 64,
+ "folds": [
+  [
+   "2024-07-01",
+   "2026-09-30"
+  ]
+ ]
+}

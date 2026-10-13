@@ -1,3 +1,4 @@
+import copy
 import torch
 import torch.nn as nn
 from model.modelFactory import ModelFactory
@@ -159,7 +160,7 @@ class Model:
             best_val_loss = val_loss
             epochs_no_improve = 0
             rollback_epoch = rollback_epoch + 1
-            best_model = model.state_dict()
+            best_model = copy.deepcopy(model.state_dict())
         else:
             epochs_no_improve += 1
 
@@ -180,7 +181,8 @@ class Model:
         """
         model_type = self.params['model_type']
         model = ModelFactory.create_model_instance(model_type, self.params)
-        optimizer = optim.Adam(model.parameters(), lr=self.params['learning_rate'])
+        optimizer = optim.Adam(model.parameters(), lr=self.params['learning_rate'],
+                               weight_decay=self.params.get('weight_decay', 0))
         
         history = {
             'loss': [],
@@ -213,9 +215,12 @@ class Model:
             
             if early_stop:
                 print(f'Early stopping at epoch {epoch + 1}', file=open('log.txt', 'a'))
-                model.load_state_dict(best_model)
                 history['rollback_epoch'] = rollback_epoch
                 break
+
+        # Always evaluate with the weights that had the best validation loss
+        if best_model is not None:
+            model.load_state_dict(best_model)
 
         return model, history
 
@@ -245,7 +250,7 @@ class Model:
         best_model_state = None
         
         for epoch in range(num_epochs):
-            total_loss, total_acc = self.run_training_epoch(data_loader, model, optimizer)
+            model, total_loss, total_acc = self.run_training_epoch(data_loader, model, optimizer)
             
             history['loss'].append(total_loss)
             history['binary_accuracy'].append(total_acc)

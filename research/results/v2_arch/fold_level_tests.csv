@@ -1,0 +1,12 @@
+model,vs,diff,folds_pos,p
+TRF-hazard,age_hazard,0.047,7/8,0.02
+TRF-hazard,logreg,0.036,6/8,0.074
+TRF-hazard,GRU-hazard,-0.015,2/8,0.875
+PTST-hazard,age_hazard,0.03,5/8,0.125
+PTST-hazard,logreg,0.019,5/8,0.23
+PTST-hazard,GRU-hazard,-0.032,3/8,0.902
+GRU-hazard,age_hazard,0.062,7/8,0.008
+GRU-hazard,logreg,0.051,7/8,0.02
+MLP-hazard,age_hazard,0.022,6/8,0.191
+MLP-hazard,logreg,0.011,4/8,0.422
+MLP-hazard,GRU-hazard,-0.04,4/8,0.844

@@ -131,10 +131,10 @@ class IndicatorTrend(FeatureBase):
                     prev_trend = 0  # up trend
             else:
                 if prev_type == "max" and current_type == "min":
-                    data.loc[prev_idx:idx, 'Trend'] = 1  # down trend
+                    data.iloc[prev_idx:idx, data.columns.get_loc('Trend')] = 1  # down trend
                     prev_trend = 1
                 elif prev_type == "min" and current_type == "max":
-                    data.loc[prev_idx:idx, 'Trend'] = 0  # up trend
+                    data.iloc[prev_idx:idx, data.columns.get_loc('Trend')] = 0  # up trend
                     prev_trend = 0
 
             prev_idx = idx
@@ -311,7 +311,7 @@ class TreasuryYieldThirteenWeek(FeatureBase):
         start_date = kwargs.get('start_date')
         end_date = kwargs.get('end_date')
         thirteen_week_treasury_yield = yf.download(
-            "^IRX", start_date, end_date)["Close"]
+            "^IRX", start_date, end_date, auto_adjust=False, multi_level_index=False, progress=False)["Close"]
         data['13W Treasury Yield'] = thirteen_week_treasury_yield
         return data
 
@@ -333,7 +333,7 @@ class TreasuryYieldFiveYear(FeatureBase):
         start_date = kwargs.get('start_date')
         end_date = kwargs.get('end_date')
         five_year_treasury_yield = yf.download(
-            "^FVX", start_date, end_date)["Close"]
+            "^FVX", start_date, end_date, auto_adjust=False, multi_level_index=False, progress=False)["Close"]
         data['5Y Treasury Yield'] = five_year_treasury_yield
         return data
 
@@ -355,7 +355,7 @@ class TreasuryYieldTenYear(FeatureBase):
         start_date = kwargs.get('start_date')
         end_date = kwargs.get('end_date')
         ten_year_treasury_yield = yf.download(
-            "^TNX", start_date, end_date)["Close"]
+            "^TNX", start_date, end_date, auto_adjust=False, multi_level_index=False, progress=False)["Close"]
         data['10Y Treasury Yield'] = ten_year_treasury_yield
         return data
 
@@ -377,7 +377,7 @@ class TreasuryYieldThirtyYear(FeatureBase):
         start_date = kwargs.get('start_date')
         end_date = kwargs.get('end_date')
         thirty_year_treasury_yield = yf.download(
-            "^TYX", start_date, end_date)["Close"]
+            "^TYX", start_date, end_date, auto_adjust=False, multi_level_index=False, progress=False)["Close"]
         data['30Y Treasury Yield'] = thirty_year_treasury_yield
         return data
 
@@ -399,7 +399,7 @@ class VolatilityThreeMonth(FeatureBase):
         start_date = kwargs.get('start_date')
         end_date = kwargs.get('end_date')
         three_month_volatility = yf.download(
-            "^VIX3M", start_date, end_date)["Close"]
+            "^VIX3M", start_date, end_date, auto_adjust=False, multi_level_index=False, progress=False)["Close"]
         data['3M Volatility'] = three_month_volatility
         return data
 

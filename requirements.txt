@@ -1,0 +1,14 @@
+# 2026-10 在 Python 3.11 上實測可執行的版本（見 research/06_reproduction.md）
+# TensorFlow 只用於設定 seed，可不裝；未安裝時請將 main.py 的 tf.random.set_seed 移除
+backtrader==1.9.78.123
+matplotlib==3.11.2
+numpy==2.4.6
+pandas==2.3.3
+scikit-learn==1.9.1
+scipy==1.17.1
+seaborn==0.13.2
+TA-Lib==0.8.1
+torch==2.14.1
+tqdm==4.70.1
+yfinance==1.7.0
+tensorflow  # optional

@@ -43,18 +43,19 @@ class GRU(NeuralNetworkModelBase):
         self.predict_steps = params['predict_steps']  # Number of future steps to predict
         self.dropout = params['dropout']  # Dropout rate for regularization
         self.num_layers = params['model_params']['GRU']['num_layers']  # Number of GRU layers
+        self.hidden_size = params['model_params']['GRU'].get('hidden_size', self.features_num)
         
         # GRU layer with the specified number of features, layers, and dropout
         self.gru = nn.GRU(
             input_size=self.features_num, 
-            hidden_size=self.features_num, 
+            hidden_size=self.hidden_size, 
             num_layers=self.num_layers, 
             batch_first=True, 
-            dropout=self.dropout
+            dropout=self.dropout if self.num_layers > 1 else 0
         )
         
         # Fully connected layer that maps the GRU output to the required prediction steps
-        self.fc = nn.Linear(self.features_num, self.predict_steps)
+        self.fc = nn.Linear(self.hidden_size, self.predict_steps)
 
     def forward(self, x):
         """Defines the forward pass of the model.
@@ -137,18 +138,19 @@ class LSTM(NeuralNetworkModelBase):
         self.predict_steps = params['predict_steps']  # Number of future steps to predict
         self.dropout = params['dropout']  # Dropout rate for regularization
         self.num_layers = params['model_params']['LSTM']['num_layers']  # Number of LSTM layers
-        
+        self.hidden_size = params['model_params']['LSTM'].get('hidden_size', self.features_num)
+
         # LSTM layer with the specified number of features, layers, and dropout
         self.lstm = nn.LSTM(
             input_size=self.features_num, 
-            hidden_size=self.features_num, 
+            hidden_size=self.hidden_size, 
             num_layers=self.num_layers, 
             batch_first=True, 
-            dropout=self.dropout
+            dropout=self.dropout if self.num_layers > 1 else 0
         )
-        
+
         # Fully connected layer that maps the LSTM output to the required prediction steps
-        self.fc = nn.Linear(self.features_num, self.predict_steps)
+        self.fc = nn.Linear(self.hidden_size, self.predict_steps)
 
     def forward(self, x):
         """Defines the forward pass of the model.
@@ -314,6 +316,56 @@ class TransformerModel(NeuralNetworkModelBase):
         x = self.dropout(x)
         x = self.fc_out(x)
         return x
+
+
+class TransformerEncoderPE(NeuralNetworkModelBase):
+    """Encoder-only Transformer with learned input projection and sinusoidal positional encoding.
+
+    Unlike `TransformerModel`, the attention layers can tell the time steps apart, and the
+    hidden size is not tied to the number of input features.
+
+    Args:
+        params (dict): Dictionary of model parameters including the number of features,
+            look-back period, prediction steps, and Transformer-specific settings
+            (`d_model`, `num_layers`, `num_heads`).
+    """
+
+    def __init__(self, params):
+        """Initializes the TransformerEncoderPE with the provided parameters."""
+        super(TransformerEncoderPE, self).__init__()
+        self.features_num = len(params['feature_cols'])
+        self.look_back = params['look_back']
+        self.predict_steps = params['predict_steps']
+        transformer_params = params['model_params'].get('TransformerEncoderPE', {})
+        d_model = transformer_params.get('d_model', 64)
+        num_layers = transformer_params.get('num_layers', 2)
+        num_heads = transformer_params.get('num_heads', 4)
+        dropout = params['dropout']
+
+        self.input_proj = nn.Linear(self.features_num, d_model)
+        position = torch.arange(self.look_back).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe = torch.zeros(self.look_back, d_model)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0))
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=num_heads, dim_feedforward=d_model * 2,
+                                                   dropout=dropout, batch_first=True)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc_out = nn.Linear(d_model, self.predict_steps)
+
+    def forward(self, x):
+        """Defines the forward pass of the model.
+
+        Args:
+            x (torch.Tensor): Input tensor with shape (batch_size, sequence_length, features_num).
+
+        Returns:
+            torch.Tensor: Output tensor with shape (batch_size, predict_steps).
+        """
+        x = self.input_proj(x) + self.pe
+        x = self.encoder(x)
+        return self.fc_out(x[:, -1, :])
 
 
 class BiLSTM(NeuralNetworkModelBase):
@@ -589,13 +641,12 @@ class TCN(NeuralNetworkModelBase):
         self.look_back = params['look_back']  # Number of past time steps used as input
         self.predict_steps = params['predict_steps']  # Number of future steps to predict
         dropout = params['dropout']  # Dropout rate for regularization
-        input_size = self.look_back
         num_channels = [self.features_num] * 3
         kernel_size = 3
         output_size = self.predict_steps
 
         # Temporal Convolutional Network layer
-        self.tcn = TemporalConvNet(input_size, num_channels, kernel_size, dropout=dropout)
+        self.tcn = TemporalConvNet(self.features_num, num_channels, kernel_size, dropout=dropout)
         # Fully connected output layer
         self.linear = nn.Linear(num_channels[-1], output_size)
 
@@ -608,7 +659,7 @@ class TCN(NeuralNetworkModelBase):
         Returns:
             torch.Tensor: Output tensor with shape (batch_size, predict_steps).
         """
-        y1 = self.tcn(x)
+        y1 = self.tcn(x.permute(0, 2, 1))  # Conv1d expects (batch_size, channels=features, length=time)
         o = self.linear(y1[:, :, -1])
         return o
 
@@ -1096,6 +1147,162 @@ class SelfAttention_many_to_many(NeuralNetworkModelBase):
         return out
 
 
+class DLinear(NeuralNetworkModelBase):
+    """DLinear (Zeng et al., AAAI 2023): series decomposition + linear layers over time.
+
+    Each feature is split into a moving-average trend and a remainder; both are mapped
+    over the time axis by a linear layer shared across features, then a linear head
+    combines all features into the predict_steps logits. A deliberately simple baseline.
+
+    Args:
+        params (dict): Model parameters; `model_params.DLinear` may set `kernel_size` and `hidden`.
+    """
+
+    def __init__(self, params):
+        """Initializes DLinear with the provided parameters."""
+        super(DLinear, self).__init__()
+        self.features_num = len(params['feature_cols'])
+        self.look_back = params['look_back']
+        self.predict_steps = params['predict_steps']
+        cfg = params['model_params'].get('DLinear', {})
+        kernel_size = cfg.get('kernel_size', 25)
+        hidden = cfg.get('hidden', 16)
+        self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False)
+        self.linear_trend = nn.Linear(self.look_back, hidden)
+        self.linear_seasonal = nn.Linear(self.look_back, hidden)
+        self.dropout = nn.Dropout(params['dropout'])
+        self.head = nn.Linear(self.features_num * hidden, self.predict_steps)
+
+    def forward(self, x):
+        """Maps (batch_size, look_back, features_num) to (batch_size, predict_steps) logits."""
+        x = x.permute(0, 2, 1)  # (batch, features, time)
+        trend = self.avg(x)
+        out = self.linear_trend(trend) + self.linear_seasonal(x - trend)
+        return self.head(self.dropout(out.flatten(1)))
+
+
+class PatchTST(NeuralNetworkModelBase):
+    """PatchTST (Nie et al., ICLR 2023): channel-independent Transformer over time patches.
+
+    Every feature is cut into overlapping patches that become tokens; a shared Transformer
+    encoder (with learned positional embeddings) processes each feature separately, and a
+    linear head combines all features into the predict_steps logits.
+
+    Args:
+        params (dict): Model parameters; `model_params.PatchTST` may set `patch_len`, `stride`,
+            `d_model`, `num_layers`, `num_heads` and `head_dim`.
+    """
+
+    def __init__(self, params):
+        """Initializes PatchTST with the provided parameters."""
+        super(PatchTST, self).__init__()
+        self.features_num = len(params['feature_cols'])
+        self.look_back = params['look_back']
+        self.predict_steps = params['predict_steps']
+        cfg = params['model_params'].get('PatchTST', {})
+        self.patch_len = cfg.get('patch_len', 16)
+        self.stride = cfg.get('stride', 8)
+        d_model = cfg.get('d_model', 32)
+        head_dim = cfg.get('head_dim', 8)
+        self.num_patches = (self.look_back - self.patch_len) // self.stride + 1
+        dropout = params['dropout']
+        self.embed = nn.Linear(self.patch_len, d_model)
+        self.pos = nn.Parameter(torch.zeros(1, self.num_patches, d_model))
+        nn.init.normal_(self.pos, std=0.02)
+        layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=cfg.get('num_heads', 4), dim_feedforward=d_model * 2,
+                                           dropout=dropout, batch_first=True, norm_first=True)
+        self.encoder = nn.TransformerEncoder(layer, num_layers=cfg.get('num_layers', 2))
+        self.channel_head = nn.Linear(self.num_patches * d_model, head_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.head = nn.Linear(self.features_num * head_dim, self.predict_steps)
+
+    def forward(self, x):
+        """Maps (batch_size, look_back, features_num) to (batch_size, predict_steps) logits."""
+        batch = x.size(0)
+        x = x.permute(0, 2, 1).unfold(-1, self.patch_len, self.stride)  # (batch, features, patches, patch_len)
+        x = x.reshape(batch * self.features_num, self.num_patches, self.patch_len)
+        x = self.encoder(self.embed(x) + self.pos)
+        x = self.channel_head(x.flatten(1)).reshape(batch, -1)
+        return self.head(self.dropout(torch.relu(x)))
+
+
+class iTransformer(NeuralNetworkModelBase):
+    """iTransformer (Liu et al., ICLR 2024): attention across variates instead of time steps.
+
+    Each feature's whole look-back series is embedded as one token, so attention learns
+    relations between indicators while the time pattern is captured by the embedding.
+
+    Args:
+        params (dict): Model parameters; `model_params.iTransformer` may set `d_model`,
+            `num_layers` and `num_heads`.
+    """
+
+    def __init__(self, params):
+        """Initializes iTransformer with the provided parameters."""
+        super(iTransformer, self).__init__()
+        self.features_num = len(params['feature_cols'])
+        self.look_back = params['look_back']
+        self.predict_steps = params['predict_steps']
+        cfg = params['model_params'].get('iTransformer', {})
+        d_model = cfg.get('d_model', 64)
+        dropout = params['dropout']
+        self.embed = nn.Linear(self.look_back, d_model)
+        layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=cfg.get('num_heads', 4), dim_feedforward=d_model * 2,
+                                           dropout=dropout, batch_first=True, norm_first=True)
+        self.encoder = nn.TransformerEncoder(layer, num_layers=cfg.get('num_layers', 2))
+        self.dropout = nn.Dropout(dropout)
+        self.head = nn.Linear(self.features_num * d_model, self.predict_steps)
+
+    def forward(self, x):
+        """Maps (batch_size, look_back, features_num) to (batch_size, predict_steps) logits."""
+        x = self.encoder(self.embed(x.permute(0, 2, 1)))  # tokens = features
+        return self.head(self.dropout(x.flatten(1)))
+
+
+class TSMixerBlock(NeuralNetworkModelBase):
+    """One TSMixer block: an MLP mixing along time, then an MLP mixing along features, both residual."""
+
+    def __init__(self, look_back, features_num, hidden, dropout):
+        """Initializes the block."""
+        super(TSMixerBlock, self).__init__()
+        self.norm_time = nn.LayerNorm(features_num)
+        self.time_mlp = nn.Sequential(nn.Linear(look_back, look_back), nn.ReLU(), nn.Dropout(dropout))
+        self.norm_feat = nn.LayerNorm(features_num)
+        self.feat_mlp = nn.Sequential(nn.Linear(features_num, hidden), nn.ReLU(), nn.Dropout(dropout),
+                                      nn.Linear(hidden, features_num), nn.Dropout(dropout))
+
+    def forward(self, x):
+        """x: (batch_size, look_back, features_num)."""
+        x = x + self.time_mlp(self.norm_time(x).transpose(1, 2)).transpose(1, 2)
+        return x + self.feat_mlp(self.norm_feat(x))
+
+
+class TSMixer(NeuralNetworkModelBase):
+    """TSMixer (Chen et al., TMLR 2023): all-MLP model alternating time- and feature-mixing.
+
+    Args:
+        params (dict): Model parameters; `model_params.TSMixer` may set `num_blocks` and `hidden`.
+    """
+
+    def __init__(self, params):
+        """Initializes TSMixer with the provided parameters."""
+        super(TSMixer, self).__init__()
+        self.features_num = len(params['feature_cols'])
+        self.look_back = params['look_back']
+        self.predict_steps = params['predict_steps']
+        cfg = params['model_params'].get('TSMixer', {})
+        self.blocks = nn.Sequential(*[TSMixerBlock(self.look_back, self.features_num, cfg.get('hidden', 64), params['dropout'])
+                                      for _ in range(cfg.get('num_blocks', 2))])
+        self.time_head = nn.Linear(self.look_back, 1)
+        self.head = nn.Linear(self.features_num, self.predict_steps)
+
+    def forward(self, x):
+        """Maps (batch_size, look_back, features_num) to (batch_size, predict_steps) logits."""
+        x = self.blocks(x)
+        x = self.time_head(x.transpose(1, 2)).squeeze(-1)  # (batch, features)
+        return self.head(torch.relu(x))
+
+
 class ModelFactory:
     @staticmethod
     def create_model_instance(model_type, params):
@@ -1125,6 +1332,11 @@ class ModelFactory:
             'CNN_many_to_many': CNN_many_to_many,
             'TransformerModel': TransformerModel,
             'TransformerModel_many_to_many': TransformerModel_many_to_many,
+            'TransformerEncoderPE': TransformerEncoderPE,
+            'DLinear': DLinear,
+            'PatchTST': PatchTST,
+            'iTransformer': iTransformer,
+            'TSMixer': TSMixer,
             'BiLSTM': BiLSTM,
             'BiLSTM_many_to_many': BiLSTM_many_to_many,
             'AttentionBiLSTM': AttentionBiLSTM,
