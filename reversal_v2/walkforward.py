@@ -66,13 +66,24 @@ def fold_positions(d, start, end, look_back=LOOK_BACK):
     return pos[m]
 
 
+STRICT_LABELS = False  # when True, drop days whose labels are not determinable before the next set (replaces purge)
+
+
+def _restrict(d, pos, boundary):
+    if not STRICT_LABELS:
+        return pos
+    ok = D.determinable_positions(pd.Series(d['close'], index=d['dates']), boundary, HORIZON)
+    return np.intersect1d(pos, ok)
+
+
 def split_fold(all_data, test_start, test_end):
     val_start = test_start - pd.DateOffset(years=2)
+    gap = pd.Timedelta(days=0) if STRICT_LABELS else purge()
     sets = {'train': {}, 'val': {}, 'test': {}}
     for s, d in all_data.items():
-        sets['train'][s] = fold_positions(d, FIRST_DATE, val_start - purge())
+        sets['train'][s] = _restrict(d, fold_positions(d, FIRST_DATE, val_start - gap), val_start)
     g = all_data['GSPC']
-    sets['val']['GSPC'] = fold_positions(g, val_start, test_start - purge())
+    sets['val']['GSPC'] = _restrict(g, fold_positions(g, val_start, test_start - gap), test_start)
     sets['test']['GSPC'] = fold_positions(g, test_start, test_end)
     return sets
 
@@ -224,6 +235,9 @@ def main():
     ap.add_argument('--train-indices', default=','.join(D.INDICES), help='indices used for training (GSPC always used for val/test)')
     ap.add_argument('--drop-features', default='', help='comma-separated groups from FEATURE_GROUPS to leave out')
     ap.add_argument('--label', default='le20', help="reversal definition: 'leN' local extrema of order N, 'zzX' ZigZag X%%")
+    ap.add_argument('--raw-dir', default='raw_v2', help='research/data/<dir> with the cached prices')
+    ap.add_argument('--strict-labels', action='store_true', help='drop train/val days whose labels depend on the next set')
+    ap.add_argument('--test-block', default='', help='override: START:END for a single test block, e.g. 2024-07-01:2026-09-30')
     ap.add_argument('--eval-indices', default='', help='extra indices to predict on the test block; saved under <out>/<SYM>/')
     args = ap.parse_args()
     if args.threads:
@@ -232,11 +246,18 @@ def main():
     folds = range(int(a), int(b or a) + 1)
     seeds = [int(s) for s in args.seeds.split(',')]
     D.set_label(args.label)
+    D.set_raw_dir(args.raw_dir)
+    global STRICT_LABELS, FOLDS
+    STRICT_LABELS = args.strict_labels
+    if args.test_block:
+        a_, b_ = args.test_block.split(':')
+        FOLDS = [(pd.Timestamp(a_), pd.Timestamp(b_))]
+        args.folds = '0'
     indices = args.train_indices.split(',')
     assert 'GSPC' in indices
     all_data, cols = load_all(indices, [g for g in args.drop_features.split(',') if g])
     os.makedirs(args.out, exist_ok=True)
-    json.dump({'label': args.label, 'purge_days': D.label_purge_days(), 'features': cols, 'train_indices': indices, 'models': args.models, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
+    json.dump({'label': args.label, 'raw_dir': args.raw_dir, 'strict_labels': STRICT_LABELS, 'purge_days': D.label_purge_days(), 'features': cols, 'train_indices': indices, 'models': args.models, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
               open(os.path.join(args.out, 'config.json'), 'w'), indent=1)
     for k in folds:
         test_start, test_end = FOLDS[k]

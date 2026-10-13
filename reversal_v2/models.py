@@ -5,6 +5,10 @@ Heads
   hazard : 1 logit for the current trend y[0] plus 15 discrete-time hazard logits
            h_k = P(first reversal at step k | none before), k = 1..15. This matches the
            label structure [a, a, ..., a, b, ..., b] exactly.
+  cumevent : 1 logit for the current trend plus 15 *direct* logits for the cumulative
+           event P(first reversal at step <= k), each trained with its own BCE and no
+           survival factorisation. Same targets as `hazard`, no structure: the control
+           that separates "training on the event" from "the hazard structure".
 Both heads expose `trend_probs` (P(down) per future day) and `event_probs(m)`
 (P(first reversal within steps 1..m)) so they can be evaluated identically.
 """
@@ -88,6 +92,11 @@ class ReversalNet(nn.Module):
     def loss(self, logits, Y, first, rev):
         if self.head_type == 'bce16':
             return nn.functional.binary_cross_entropy_with_logits(logits, Y)
+        if self.head_type == 'cumevent':
+            steps = torch.arange(1, self.horizon, device=logits.device).unsqueeze(0)
+            cum = (rev.unsqueeze(1) <= steps).float()
+            return (nn.functional.binary_cross_entropy_with_logits(logits[:, 0], first)
+                    + nn.functional.binary_cross_entropy_with_logits(logits[:, 1:], cum))
         trend_loss = nn.functional.binary_cross_entropy_with_logits(logits[:, 0], first)
         log_h = nn.functional.logsigmoid(logits[:, 1:])      # log h_k, k = 1..15
         log_1mh = nn.functional.logsigmoid(-logits[:, 1:])   # log (1 - h_k)
@@ -104,7 +113,10 @@ class ReversalNet(nn.Module):
         if self.head_type == 'bce16':
             return torch.sigmoid(logits)
         a = torch.sigmoid(logits[:, :1])
-        survive = torch.cumprod(torch.sigmoid(-logits[:, 1:]), dim=1)   # S_k = prod_{j<=k}(1-h_j)
+        if self.head_type == 'cumevent':
+            survive = 1 - torch.sigmoid(logits[:, 1:])
+        else:
+            survive = torch.cumprod(torch.sigmoid(-logits[:, 1:]), dim=1)   # S_k = prod_{j<=k}(1-h_j)
         survive = torch.cat([torch.ones_like(a), survive], dim=1)
         return a * survive + (1 - a) * (1 - survive)
 
@@ -114,4 +126,6 @@ class ReversalNet(nn.Module):
             p = torch.sigmoid(logits)
             p0, pm = p[:, 0], p[:, m]
             return p0 * (1 - pm) + (1 - p0) * pm  # P(y_m != y_0), assuming independence
+        if self.head_type == 'cumevent':
+            return torch.sigmoid(logits[:, m])
         return 1 - torch.prod(torch.sigmoid(-logits[:, 1:m + 1]), dim=1)

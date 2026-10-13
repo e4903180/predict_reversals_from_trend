@@ -20,7 +20,8 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 from reversal_v2 import data as D
-from reversal_v2.walkforward import EVENT_M, FOLDS, FIRST_DATE, HORIZON, purge
+from reversal_v2 import walkforward as W
+from reversal_v2.walkforward import EVENT_M, FIRST_DATE, HORIZON, purge
 
 COST = 0.0005  # 5 bp per unit of position change
 RNG = np.random.default_rng(0)
@@ -29,12 +30,18 @@ RNG = np.random.default_rng(0)
 def use_run_label(run_dir):
     """Selects the label definition recorded in the run's config.json (default le20)."""
     cfg = os.path.join(run_dir, 'config.json')
-    D.set_label(json.load(open(cfg)).get('label', 'le20') if os.path.exists(cfg) else 'le20')
+    if not os.path.exists(cfg):
+        cfg = os.path.join(os.path.dirname(run_dir.rstrip('/')), 'config.json')  # <root>/<SYM> layout
+    c = json.load(open(cfg)) if os.path.exists(cfg) else {}
+    D.set_label(c.get('label', 'le20'))
+    D.set_raw_dir(c.get('raw_dir', 'raw_v2'))
+    if 'folds' in c:
+        W.FOLDS = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in c['folds']]
 
 
 def load_run(run_dir):
     folds = []
-    for k in range(len(FOLDS)):
+    for k in range(len(W.FOLDS)):
         fd = os.path.join(run_dir, f'fold{k}')
         if not os.path.exists(os.path.join(fd, 'labels.npz')):
             continue
@@ -50,7 +57,7 @@ def load_run(run_dir):
 
 def age_hazard_baseline(fold_k, split_labels, symbol='GSPC'):
     """P(reversal within m | confirmed-trend type and age bin), fitted on ^GSPC history before validation."""
-    test_start = FOLDS[fold_k][0]
+    test_start = W.FOLDS[fold_k][0]
     fit_end = test_start - pd.DateOffset(years=2) - purge()
     f = _frame(symbol)
     f = f.loc[(f.index >= FIRST_DATE) & (f.index <= fit_end)]

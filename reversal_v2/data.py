@@ -30,6 +30,12 @@ def label_purge_days(spec=None):
 
 
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'research', 'data', 'raw_v2')
+
+
+def set_raw_dir(name):
+    """Selects research/data/<name> as the price-data directory."""
+    global RAW_DIR
+    RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'research', 'data', name)
 INDICES = ['GSPC', 'IXIC', 'DJI', 'RUT']
 MACRO = ['VIX', 'IRX', 'FVX', 'TNX']
 
@@ -242,6 +248,29 @@ FEATURES = None  # filled on first build
 
 def feature_columns(frame):
     return [c for c in frame.columns if c not in ('trend', 'close', 'open')]
+
+
+def determinable_positions(close, boundary, horizon=16, spec=None):
+    """Days t whose target window (t+1..t+horizon) is fully determined by prices up to `boundary` (exclusive).
+
+    The window's labels are fixed once an extremum *after* the window has been confirmed using
+    only data before the boundary (filtered extrema alternate, so it locks every earlier label).
+    Works for both local-extrema and ZigZag definitions; replaces a fixed purge.
+    """
+    spec = spec or LABEL
+    sub = close[close.index < boundary]
+    n = len(sub)
+    if spec.startswith('le'):
+        order = int(spec[2:])
+        _, extrema = trend_labels(sub, order=order)
+        locks = np.array([i for i, _ in extrema if i + order <= n - 1])
+    else:
+        pivots = zigzag_pivots(sub.values, int(spec[2:]) / 100)
+        locks = np.array([piv for piv, _, conf in pivots if conf <= n - 1])
+    if len(locks) == 0:
+        return np.zeros(0, dtype=int)
+    last_lock = locks.max()
+    return np.arange(0, max(last_lock - horizon, 0))  # t + horizon < last_lock
 
 
 # ---------------------------------------------------------------- windows
