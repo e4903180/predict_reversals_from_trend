@@ -238,18 +238,16 @@ def set_extra_groups(groups):
     EXTRA_GROUPS = list(groups)
 
 
-def cross_market_features(symbol, index):
-    """Information from other markets, all available from 1990: relative strength of the other
-    US indices (a breadth proxy: small caps or the broad NYSE lagging the S&P), the CBOE SKEW
-    index (option-implied tail risk) and the dollar index."""
-    own = np.log(load_raw(symbol)['Close'].reindex(index).ffill())
+def cross_market_features(index):
+    """Market-wide information (identical columns for every index, all available from 1990):
+    relative strength of small caps, tech, the Dow and the broad NYSE versus the S&P 500 (breadth
+    proxies), the CBOE SKEW index (option-implied tail risk) and the dollar index."""
+    spx = np.log(load_raw('GSPC')['Close'].reindex(index).ffill())
     f = pd.DataFrame(index=index)
-    for other in ['GSPC', 'IXIC', 'DJI', 'RUT', 'NYA']:
-        if other == symbol:
-            continue
+    for name, other in [('small', 'RUT'), ('tech', 'IXIC'), ('dow', 'DJI'), ('broad', 'NYA')]:
         o = np.log(load_raw(other)['Close'].reindex(index).ffill())
         for n in [20, 60]:
-            f[f'rs_{other}_{n}'] = (o.diff(n) - own.diff(n))
+            f[f'rs_{name}_{n}'] = o.diff(n) - spx.diff(n)
     skew = load_raw('SKEW')['Close'].reindex(index).ffill()
     f['skew'] = (skew - 120) / 10
     f['skew_chg20'] = skew.diff(20) / 10
@@ -265,7 +263,7 @@ def build_index_frame(symbol):
     df = df[df['Close'] > 0]
     feats = index_features(df, has_volume=True).join(macro_features(df.index))
     if 'xmkt' in EXTRA_GROUPS:
-        feats = feats.join(cross_market_features(symbol, df.index))
+        feats = feats.join(cross_market_features(df.index))
     trend = labels_for(df['Close'])
     out = feats.copy()
     out['trend'] = trend
