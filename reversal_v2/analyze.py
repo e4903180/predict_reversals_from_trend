@@ -35,6 +35,7 @@ def use_run_label(run_dir):
     c = json.load(open(cfg)) if os.path.exists(cfg) else {}
     D.set_label(c.get('label', 'le20'))
     D.set_raw_dir(c.get('raw_dir', 'raw_v2'))
+    D.set_extra_groups([g for g in c.get('add_features', '').split(',') if g])
     if 'folds' in c:
         W.FOLDS = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in c['folds']]
 

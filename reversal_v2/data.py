@@ -230,11 +230,42 @@ def macro_features(index):
     return f
 
 
+EXTRA_GROUPS = []  # e.g. ['xmkt']; selected with set_extra_groups
+
+
+def set_extra_groups(groups):
+    global EXTRA_GROUPS
+    EXTRA_GROUPS = list(groups)
+
+
+def cross_market_features(symbol, index):
+    """Information from other markets, all available from 1990: relative strength of the other
+    US indices (a breadth proxy: small caps or the broad NYSE lagging the S&P), the CBOE SKEW
+    index (option-implied tail risk) and the dollar index."""
+    own = np.log(load_raw(symbol)['Close'].reindex(index).ffill())
+    f = pd.DataFrame(index=index)
+    for other in ['GSPC', 'IXIC', 'DJI', 'RUT', 'NYA']:
+        if other == symbol:
+            continue
+        o = np.log(load_raw(other)['Close'].reindex(index).ffill())
+        for n in [20, 60]:
+            f[f'rs_{other}_{n}'] = (o.diff(n) - own.diff(n))
+    skew = load_raw('SKEW')['Close'].reindex(index).ffill()
+    f['skew'] = (skew - 120) / 10
+    f['skew_chg20'] = skew.diff(20) / 10
+    dxy = np.log(load_raw('DXY')['Close'].reindex(index).ffill())
+    f['dxy_ret20'] = dxy.diff(20)
+    f['dxy_ret60'] = dxy.diff(60)
+    return f
+
+
 def build_index_frame(symbol):
     """Features + trend label for one index."""
     df = load_raw(symbol)
     df = df[df['Close'] > 0]
     feats = index_features(df, has_volume=True).join(macro_features(df.index))
+    if 'xmkt' in EXTRA_GROUPS:
+        feats = feats.join(cross_market_features(symbol, df.index))
     trend = labels_for(df['Close'])
     out = feats.copy()
     out['trend'] = trend

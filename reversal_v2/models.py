@@ -74,7 +74,51 @@ class MLPEncoder(nn.Module):
         return self.net(x[:, -self.last:].flatten(1))
 
 
-ENCODERS = {'GRU': GRUEncoder, 'TCN': TCNEncoder, 'MLP': MLPEncoder}
+class TransformerEncoderPE(nn.Module):
+    """Per-day tokens, learned input projection, sinusoidal positional encoding, pre-norm encoder."""
+
+    def __init__(self, n_features, hidden=64, dropout=0.2, layers=2, heads=4, look_back=64):
+        super().__init__()
+        self.proj = nn.Linear(n_features, hidden)
+        pos = torch.arange(look_back).unsqueeze(1)
+        div = torch.exp(torch.arange(0, hidden, 2) * (-torch.log(torch.tensor(10000.0)) / hidden))
+        pe = torch.zeros(look_back, hidden)
+        pe[:, 0::2], pe[:, 1::2] = torch.sin(pos * div), torch.cos(pos * div)
+        self.register_buffer('pe', pe.unsqueeze(0))
+        layer = nn.TransformerEncoderLayer(hidden, heads, hidden * 2, dropout, batch_first=True, norm_first=True)
+        self.enc = nn.TransformerEncoder(layer, layers)
+        self.drop = nn.Dropout(dropout)
+        self.out_dim = hidden
+
+    def forward(self, x):
+        h = self.enc(self.proj(x) + self.pe[:, -x.size(1):])
+        return self.drop(h[:, -1])
+
+
+class PatchTransformer(nn.Module):
+    """PatchTST-style tokens (patch_len 16, stride 8) with channel mixing inside each patch embedding,
+    learned positional embedding, pre-norm encoder; mean-pooled. Channel mixing keeps it cheap."""
+
+    def __init__(self, n_features, hidden=64, dropout=0.2, layers=2, heads=4, patch_len=16, stride=8, look_back=64):
+        super().__init__()
+        self.patch_len, self.stride = patch_len, stride
+        n_patches = (look_back - patch_len) // stride + 1
+        self.embed = nn.Linear(patch_len * n_features, hidden)
+        self.pos = nn.Parameter(torch.zeros(1, n_patches, hidden))
+        nn.init.normal_(self.pos, std=0.02)
+        layer = nn.TransformerEncoderLayer(hidden, heads, hidden * 2, dropout, batch_first=True, norm_first=True)
+        self.enc = nn.TransformerEncoder(layer, layers)
+        self.drop = nn.Dropout(dropout)
+        self.out_dim = hidden
+
+    def forward(self, x):
+        p = x.unfold(1, self.patch_len, self.stride)            # (batch, patches, features, patch_len)
+        p = p.permute(0, 1, 3, 2).flatten(2)                     # (batch, patches, patch_len*features)
+        h = self.enc(self.embed(p) + self.pos)
+        return self.drop(h.mean(1))
+
+
+ENCODERS = {'GRU': GRUEncoder, 'TCN': TCNEncoder, 'MLP': MLPEncoder, 'TRF': TransformerEncoderPE, 'PTST': PatchTransformer}
 
 
 class ReversalNet(nn.Module):

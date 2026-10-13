@@ -235,6 +235,7 @@ def main():
     ap.add_argument('--train-indices', default=','.join(D.INDICES), help='indices used for training (GSPC always used for val/test)')
     ap.add_argument('--drop-features', default='', help='comma-separated groups from FEATURE_GROUPS to leave out')
     ap.add_argument('--label', default='le20', help="reversal definition: 'leN' local extrema of order N, 'zzX' ZigZag X%%")
+    ap.add_argument('--add-features', default='', help='extra feature groups, e.g. xmkt')
     ap.add_argument('--raw-dir', default='raw_v2', help='research/data/<dir> with the cached prices')
     ap.add_argument('--strict-labels', action='store_true', help='drop train/val days whose labels depend on the next set')
     ap.add_argument('--test-block', default='', help='override: START:END for a single test block, e.g. 2024-07-01:2026-09-30')
@@ -247,6 +248,7 @@ def main():
     seeds = [int(s) for s in args.seeds.split(',')]
     D.set_label(args.label)
     D.set_raw_dir(args.raw_dir)
+    D.set_extra_groups([g for g in args.add_features.split(',') if g])
     global STRICT_LABELS, FOLDS
     STRICT_LABELS = args.strict_labels
     if args.test_block:
@@ -257,7 +259,7 @@ def main():
     assert 'GSPC' in indices
     all_data, cols = load_all(indices, [g for g in args.drop_features.split(',') if g])
     os.makedirs(args.out, exist_ok=True)
-    json.dump({'label': args.label, 'raw_dir': args.raw_dir, 'strict_labels': STRICT_LABELS, 'purge_days': D.label_purge_days(), 'features': cols, 'train_indices': indices, 'models': args.models, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
+    json.dump({'label': args.label, 'raw_dir': args.raw_dir, 'add_features': args.add_features, 'strict_labels': STRICT_LABELS, 'purge_days': D.label_purge_days(), 'features': cols, 'train_indices': indices, 'models': args.models, 'horizon': HORIZON, 'look_back': LOOK_BACK, 'folds': [[str(s.date()), str(e.date())] for s, e in FOLDS]},
               open(os.path.join(args.out, 'config.json'), 'w'), indent=1)
     for k in folds:
         test_start, test_end = FOLDS[k]
