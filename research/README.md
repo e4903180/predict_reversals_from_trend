@@ -14,7 +14,10 @@
 | [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
 | [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
 | [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
-| [**18_strict_labels_rerun.md**](18_strict_labels_rerun.md) | **嚴格標籤切分下的歷史重跑 + 與樣本外結果的綜合；研究的最終結論（最新）** |
+| [**REPORT.md**](REPORT.md) | **完整研究報告（摘要、方法、歷史與樣本外結果、延伸、結論、限制）** |
+| [20_extra_information_and_architectures.md](20_extra_information_and_architectures.md) | 跨市場特徵（負面結果）、Transformer / Patch Transformer 接事件頭（無優勢） |
+| [19_rolling_threshold_and_etf.md](19_rolling_threshold_and_etf.md) | 滾動閾值解決校準漂移；ETF 回測無擇時優勢 |
+| [18_strict_labels_rerun.md](18_strict_labels_rerun.md) | 嚴格標籤切分下的歷史重跑 + 與樣本外結果的綜合 |
 | [17_oos_2024_2026_results.md](17_oos_2024_2026_results.md) | **事前註冊的樣本外測試（2024-07 ~ 2026-09）：反轉可預測性在新資料上確認；深度模型相對 logreg 的優勢與 hazard 結構的貢獻都沒有重現** |
 | [16_preregistration_oos_2024_2026.md](16_preregistration_oos_2024_2026.md) | 樣本外測試的事前註冊規格（下載資料前 commit） |
 | [15_critical_review.md](15_critical_review.md) | **自我審查：先前檢定的弱點（指數高度相關、合併 bootstrap 偏誤、ZigZag 洩漏）、以時段為單位的保守重算、改進優先順序與未來方向（最新）** |
@@ -64,7 +67,9 @@
 
 **樣本外確認（[17](17_oos_2024_2026_results.md)，2024-07 ~ 2026-09，事前註冊）**：所有針對反轉事件訓練的模型在 4/4 個指數都高於無模型基準（AUC +0.09 ~ +0.16，區間不含 0）。但 GRU 相對 logreg 的優勢沒有重現（1/4），直接事件頭（cumevent）在 4/4 指數高於 hazard 頭。**修正後的核心結論：關鍵是「直接針對反轉事件訓練」與可跨視窗比較的特徵，不是 hazard 結構，也不是深度序列模型；原始的 16 個獨立 BCE 輸出在新資料上幾乎沒有預測力。** 交易上仍無優勢。
 
-**下一步建議**（[15 §3–4](15_critical_review.md)）：加入「直接事件頭」對照、標籤可確定性剔除、2024-07 以後事前指定的樣本外測試、用 ETF 回測；更長期的方向是 triple-barrier 標籤、市場寬度 / 信用利差 / 選擇權 / 文字等價格以外的資訊，以及和波動度目標結合。
+**延伸（[19](19_rolling_threshold_and_etf.md)、[20](20_extra_information_and_architectures.md)）**：滾動閾值解決了模型輸出尺度漂移的問題（警報率標準差 0.16 → 0.05，樣本外誤報減半），警報系統在實務上可用；但用 ETF 回測，部位調整相對 Buy & Hold 的 Sharpe 差距在 ±0.02 內，沒有擇時優勢。跨市場特徵（寬度代理、SKEW、美元）讓所有模型變差；Transformer / Patch Transformer 接事件頭也低於 GRU。**完整報告見 [REPORT.md](REPORT.md)。**
+
+**未來方向**：更多獨立的市場歷史、更貼近應用的標籤（未來 N 天最大回撤、triple-barrier）、把反轉機率作為風險監控輸入而非進出場訊號、以 LLM 將新聞轉為有時間戳的特徵（需另外的資料）。
 
 ## 注意事項
 

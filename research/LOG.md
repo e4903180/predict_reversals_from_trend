@@ -219,3 +219,7 @@
 ### 10-13 14:30　跨市場特徵結果（[20 §1](20_extra_information_and_architectures.md)）
 - 12 個市場寬度代理 / SKEW / 美元特徵：歷史上所有模型變差（−0.007 ~ −0.029，時段勝率 1–4/8），樣本外也大多變差。負面結果，與總經特徵消融一致：資料量不足以支撐更多維度。
 - Transformer / PatchTST 的 hazard 頭實驗進行到第 6/8 個時段。
+
+### 10-13 15:20　架構實驗完成（[20 §2](20_extra_information_and_architectures.md)）；報告定稿
+- TRF-hazard 0.569（勝基準 p = 0.020，低於 GRU 0.584）、PTST-hazard 0.553（不顯著）。參數越多表現越差。
+- 補完 REPORT.md §6.3、§6.4，README 索引與摘要更新。本輪計畫（校準漂移、ETF 回測、額外資訊、架構補齊、完整報告）全部完成。
