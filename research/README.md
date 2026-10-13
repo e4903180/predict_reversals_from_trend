@@ -14,7 +14,9 @@
 | [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
 | [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
 | [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
-| [**15_critical_review.md**](15_critical_review.md) | **自我審查：先前檢定的弱點（指數高度相關、合併 bootstrap 偏誤、ZigZag 洩漏）、以時段為單位的保守重算、改進優先順序與未來方向（最新）** |
+| [**17_oos_2024_2026_results.md**](17_oos_2024_2026_results.md) | **事前註冊的樣本外測試（2024-07 ~ 2026-09）：反轉可預測性在新資料上確認；深度模型相對 logreg 的優勢與 hazard 結構的貢獻都沒有重現（最新）** |
+| [16_preregistration_oos_2024_2026.md](16_preregistration_oos_2024_2026.md) | 樣本外測試的事前註冊規格（下載資料前 commit） |
+| [15_critical_review.md](15_critical_review.md) | **自我審查：先前檢定的弱點（指數高度相關、合併 bootstrap 偏誤、ZigZag 洩漏）、以時段為單位的保守重算、改進優先順序與未來方向（最新）** |
 | [14_label_robustness.md](14_label_robustness.md) | 換 5 種反轉定義（局部極值 10/20/30 天、ZigZag 5%/7%）：反轉預測優勢都成立；交易好處只來自 2008–09 |
 | [13_multi_index_validation.md](13_multi_index_validation.md) | 在 4 個指數上驗證（381 個反轉）：反轉預測的優勢跨市場成立；交易優勢沒有重現 |
 | [11_v2_study.md](11_v2_study.md) | **v2 研究總結：1993–2023 資料、hazard 輸出頭、walk-forward 8 個時段、顯著性檢定、反轉警報策略** |
@@ -58,6 +60,8 @@
 - **換反轉定義（[14](14_label_robustness.md)）**：在局部極值 10/20/30 天、ZigZag 5%/7% 共 5 種定義下，hazard 集成都顯著勝過基準（p ≤ 0.002）；hazard 頭優於原本的輸出頭在 4/5 種定義下成立（10 天這種很短期的定義例外）。依反轉機率調整部位的交易好處，排除 2008–09 之後就消失。
 
 **保守重算（[15](15_critical_review.md)）**：四個指數的反轉高度重合，先前的 32 格檢定高估了顯著性。改以 8 個時段為單位做配對檢定後，hazard 頭的 GRU 在 4/5 種反轉定義下仍顯著優於無模型基準（p ≤ 0.012）**和同特徵的 logistic regression**（p ≤ 0.027）；原本的 16-BCE 頭相對 logreg 則不顯著。效果量 AUC +0.03 ~ +0.10。
+
+**樣本外確認（[17](17_oos_2024_2026_results.md)，2024-07 ~ 2026-09，事前註冊）**：所有針對反轉事件訓練的模型在 4/4 個指數都高於無模型基準（AUC +0.09 ~ +0.16，區間不含 0）。但 GRU 相對 logreg 的優勢沒有重現（1/4），直接事件頭（cumevent）在 4/4 指數高於 hazard 頭。**修正後的核心結論：關鍵是「直接針對反轉事件訓練」與可跨視窗比較的特徵，不是 hazard 結構，也不是深度序列模型；原始的 16 個獨立 BCE 輸出在新資料上幾乎沒有預測力。** 交易上仍無優勢。
 
 **下一步建議**（[15 §3–4](15_critical_review.md)）：加入「直接事件頭」對照、標籤可確定性剔除、2024-07 以後事前指定的樣本外測試、用 ETF 回測；更長期的方向是 triple-barrier 標籤、市場寬度 / 信用利差 / 選擇權 / 文字等價格以外的資訊，以及和波動度目標結合。
 

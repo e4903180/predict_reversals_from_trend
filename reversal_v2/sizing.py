@@ -29,14 +29,15 @@ def main():
     ap.add_argument('--symbols', default='GSPC,IXIC,DJI,RUT')
     ap.add_argument('--models', default='GRU-hazard,ENS-hazard')
     ap.add_argument('--out', default=None)
+    ap.add_argument('--ensemble', default='ENS-hazard=GRU-hazard+TCN-hazard+MLP-hazard', help='name=modelA+modelB+...')
     args = ap.parse_args()
+    ens_name, ens_members = args.ensemble.split('=')[0], args.ensemble.split('=')[1].split('+')
     rows = []
     for sym in args.symbols.split(','):
         folds = load_run(args.run_root if sym == 'GSPC' else os.path.join(args.run_root, sym))
         for f in folds:
-            members = ['GRU-hazard', 'TCN-hazard', 'MLP-hazard']
-            if all(m in f['preds'] for m in members):
-                f['preds']['ENS-hazard'] = {k: np.mean([f['preds'][m][k] for m in members], 0) for k in f['preds'][members[0]]}
+            if all(m in f['preds'] for m in ens_members):
+                f['preds'][ens_name] = {k: np.mean([f['preds'][m][k] for m in ens_members], 0) for k in f['preds'][ens_members[0]]}
         for m in args.models.split(','):
             paths = {'half_exit': [], 'graded': []}
             mkt = []
