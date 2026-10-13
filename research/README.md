@@ -14,7 +14,8 @@
 | [03_issues_and_bugs.md](03_issues_and_bugs.md) | 發現的錯誤、資料洩漏與方法論問題，依嚴重度排序，附程式行號與證據 |
 | [04_experiment_history.md](04_experiment_history.md) | git 歷史、舊版 108 組實驗彙整、目前 `outputs/` 結果解讀 |
 | [05_recommendations.md](05_recommendations.md) | 修正與後續研究路線圖 |
-| [**17_oos_2024_2026_results.md**](17_oos_2024_2026_results.md) | **事前註冊的樣本外測試（2024-07 ~ 2026-09）：反轉可預測性在新資料上確認；深度模型相對 logreg 的優勢與 hazard 結構的貢獻都沒有重現（最新）** |
+| [**18_strict_labels_rerun.md**](18_strict_labels_rerun.md) | **嚴格標籤切分下的歷史重跑 + 與樣本外結果的綜合；研究的最終結論（最新）** |
+| [17_oos_2024_2026_results.md](17_oos_2024_2026_results.md) | **事前註冊的樣本外測試（2024-07 ~ 2026-09）：反轉可預測性在新資料上確認；深度模型相對 logreg 的優勢與 hazard 結構的貢獻都沒有重現** |
 | [16_preregistration_oos_2024_2026.md](16_preregistration_oos_2024_2026.md) | 樣本外測試的事前註冊規格（下載資料前 commit） |
 | [15_critical_review.md](15_critical_review.md) | **自我審查：先前檢定的弱點（指數高度相關、合併 bootstrap 偏誤、ZigZag 洩漏）、以時段為單位的保守重算、改進優先順序與未來方向（最新）** |
 | [14_label_robustness.md](14_label_robustness.md) | 換 5 種反轉定義（局部極值 10/20/30 天、ZigZag 5%/7%）：反轉預測優勢都成立；交易好處只來自 2008–09 |
